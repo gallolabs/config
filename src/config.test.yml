@@ -1,0 +1,6 @@
+machin:
+  truc:
+    bidule: true
+deep:
+  config: false
+users: !include config2.test.yml
