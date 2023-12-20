@@ -1,6 +1,6 @@
 import fs, { existsSync } from 'fs'
 import { mapKeys, pickBy, each, set, get, omit } from 'lodash-es'
-import { extname, resolve } from 'path'
+import { extname, resolve, dirname } from 'path'
 import { parseFile as parseYmlFile } from './yaml.js'
 import fjp, {Operation} from 'fast-json-patch'
 import chokidar from 'chokidar'
@@ -8,6 +8,8 @@ import { EventEmitter, once } from 'events'
 import {SchemaObject, default as Ajv} from 'ajv'
 import traverse from 'traverse'
 const  { compare } = fjp
+import { readFile } from 'fs/promises'
+import parseEnvString from 'parse-env-string'
 
 // adapted from https://github.com/sindresorhus/execa/blob/main/lib/promise.js
 const nativePromisePrototype = (async () => {})().constructor.prototype;
@@ -184,8 +186,94 @@ export class ConfigLoader<Config extends Object> extends EventEmitter implements
     }
 }
 
-export class FileLoaderPlugin  implements ConfigLoaderPlugin {
+interface FileLoaderContentParser {
+    isFlat: () => boolean
+    parse: (content: string) => Promise<Object> | Object
+}
 
+class JsonFileParser implements FileLoaderContentParser {
+    public isFlat() {
+        return false
+    }
+    public parse(content: string): Object {
+        return JSON.parse(content)
+    }
+}
+
+class YamlFileParser implements FileLoaderContentParser {
+    public isFlat() {
+        return false
+    }
+    public parse(content: string): Object {
+        return JSON.parse(content)
+    }
+}
+
+class EnvFileParser implements FileLoaderContentParser {
+    protected delimiter: string = '_'
+
+    public isFlat() {
+        return true
+    }
+    public parse(content: string): Object {
+        return mapKeys(
+            parseEnvString(content.replace(/\n/g, ' ')),
+            (_value, key) => {
+                return key.split(this.delimiter).join('.')
+            }
+        )
+    }
+}
+
+export class FileLoaderPlugin implements ConfigLoaderPlugin {
+    protected defaultFilePath?: string
+    protected envFilePath?: string
+    protected parsers: Record<string, FileLoaderContentParser> = {
+        'json': new JsonFileParser,
+        'yaml': new YamlFileParser,
+        'yml': new YamlFileParser,
+        'env': new EnvFileParser
+    }
+
+    async load(configLoad: Object): Promise<Object> {
+        let filepath = this.defaultFilePath
+
+        if (this.envFilePath && process.env[this.envFilePath]) {
+            filepath = process.env[this.envFilePath]
+        }
+
+        if (!filepath) {
+            return configLoad
+        }
+
+        // Ignore if no file available
+        if (!existsSync(filepath) && filepath === this.defaultFilePath) {
+            return configLoad
+        }
+        // -----------
+
+        const content = await readFile(filepath, {encoding: 'utf8'})
+
+        const parser = this.parsers[extname(filepath)]
+
+        if (!parser) {
+            throw new Error('Unhandled file type ' + filepath)
+        }
+
+        const parsed = parser.parse(content)
+
+        if (parser.isFlat()) {
+            each(parsed, (value, key) => {
+                set(configLoad, key, value)
+            })
+            return configLoad
+        }
+
+        return {
+            ...configLoad,
+            ...parsed
+        }
+    }
 }
 
 export class EnvLoaderPlugin implements ConfigLoaderPlugin {
@@ -198,8 +286,6 @@ export class EnvLoaderPlugin implements ConfigLoaderPlugin {
     }
 
     async load(configLoad: Object, schema: SchemaObject): Promise<Object> {
-
-
         function unrefSchema(schema: Object) {
             function resolveRef(o: any): any {
                 if (!(o instanceof Object && o.$ref)) {
@@ -255,7 +341,10 @@ export class EnvLoaderPlugin implements ConfigLoaderPlugin {
         function extractEnvConfigPathsValues({delimiter, prefix, schema}: {delimiter: string, prefix?: string, schema: SchemaObject}): Record<string, string> {
             const fullPrefix = prefix ? prefix.toLowerCase() + (prefix.endsWith(delimiter) ? '' : delimiter) : null
             schema = unrefSchema(schema)
-            const envs = (!fullPrefix ? process.env : mapKeys(pickBy(process.env, (_value, key) => key.toLowerCase().startsWith(fullPrefix)), (_v, k) => k?.substring(fullPrefix.length))) as Record<string, string>
+            const envs = (!fullPrefix ? process.env : mapKeys(
+                pickBy(process.env, (_value, key) => key.toLowerCase().startsWith(fullPrefix)),
+                (_v, k) => k?.substring(fullPrefix.length))
+            ) as Record<string, string>
             // If prefix add warn if not found good path ?
 
             return mapKeys(envs, (_value, key) => {

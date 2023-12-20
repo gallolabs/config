@@ -16,6 +16,7 @@
     "fast-json-patch": "^3.1.1",
     "jsonata": "^2.0.3",
     "lodash-es": "^4.17.21",
+    "parse-env-string": "^1.0.1",
     "traverse": "^0.6.7",
     "yaml": "^2.3.4"
   },
@@ -24,6 +25,7 @@
     "@types/lodash-es": "^4.17.12",
     "@types/mocha": "^10.0.6",
     "@types/node": "^20.10.4",
+    "@types/parse-env-string": "^1.0.2",
     "@types/traverse": "^0.6.36",
     "c8": "^8.0.1",
     "mocha": "^10.2.0",
