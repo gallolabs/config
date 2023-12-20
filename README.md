@@ -1,5 +1,5 @@
 <p align="center">
-    <img height="200" src="logo_w200.jpeg">
+    <img height="200" src="https://raw.githubusercontent.com/gallolabs/config/main/logo_w200.jpeg">
   <p align="center"><strong>Gallo config</strong></p>
 </p>
 
