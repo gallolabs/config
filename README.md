@@ -1,4 +1,7 @@
-# Config
+<p align="center">
+    <img height="200" src="logo_w200.jpeg">
+  <p align="center"><strong>Gallo config</strong></p>
+</p>
 
 Advanced config:
 - [X] from files (super-yaml, json) and envs (scoped or not)
