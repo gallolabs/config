@@ -1,7 +1,7 @@
 {
   "name": "@gallolabs/config",
   "version": "0.1.1",
-  "description": "Config javascript component",
+  "description": "",
   "main": "dist/index.js",
   "scripts": {
     "build": "rm -Rf dist && tspc",
