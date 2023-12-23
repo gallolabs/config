@@ -16,21 +16,26 @@ export class GlobalLoader {
         this.uriLoader = uriLoader
         this.loaders = {
             env: new ProcessEnvLoader({ resolve: true, prefix: envPrefix, schema }),
-            arg: new ProcessArgvLoader(schema)
+            arg: new ProcessArgvLoader(schema, true)
         }
     }
 
     public async load(): Promise<Object> {
         //this.uriLoader.clearCaches()
         const baseConfigs = await Promise.all([
-            this.uriLoader.resolveTokens(await this.loaders.env.load(), ''),
-            this.uriLoader.resolveTokens(await this.loaders.arg.load(), '')
+            this.uriLoader.resolveTokens(await this.loaders.env.load(), 'env:'),
+            this.uriLoader.resolveTokens(await this.loaders.arg.load(), 'arg:')
         ])
+
         const obj: Record<string, any> = cloneDeep(baseConfigs[0])
 
         each(flatten(baseConfigs[1] as any), (v, path) => {
+            if (v === undefined) {
+                return
+            }
             set(obj, path, v)
         })
+
 
         const configKey = findKey(obj, (_, k) => k.toLowerCase() === 'config')
 
@@ -42,10 +47,16 @@ export class GlobalLoader {
                 Object.assign(obj, pathLoadedObj)
 
                 each(flatten(baseConfigs[0] as any), (v, path) => {
+                    if (v === undefined) {
+                        return
+                    }
                     set(obj, path, v)
                 })
 
                 each(flatten(baseConfigs[1] as any), (v, path) => {
+                    if (v === undefined) {
+                        return
+                    }
                     set(obj, path, v)
                 })
 
@@ -142,9 +153,19 @@ export class UriLoader extends EventEmitter {
 
         traverse(value).forEach(function (val) {
             if (val instanceof IncludeToken) {
-                const resolution = val.getUri().startsWith('#')
-                    ? self.resolveFragment(value, val.getUri().substring(1))
-                    : self.load(val.getUri(), parentUri)
+
+                let resolution: Promise<any>
+
+                if (val.getUri().startsWith('#')) {
+                    if (parentUri === 'env:' || parentUri === 'arg:') {
+                        resolution = self.load(parentUri + val.getUri())
+                    } else {
+                        resolution = self.resolveFragment(value, val.getUri().substring(1))
+                    }
+                } else {
+                    resolution = self.load(val.getUri(), parentUri)
+                }
+
                 resolutions.push(resolution)
                 resolution.then(v => this.update(v))
             }
@@ -171,6 +192,16 @@ export class UriLoader extends EventEmitter {
             return (envs as any)[uri.substring(4)]
         }
 
+        if (uri.startsWith('arg:')) {
+            const envs = await this.proxyLoad('arg:', new ProcessArgvLoader({ resolve: false, schema: this.schema }))
+
+            if (uri === 'arg:') {
+                return envs
+            }
+
+            return (envs as any)[uri.substring(4)]
+        }
+
         if (uri.startsWith('http://') || uri.startsWith('https://')) {
             return this.proxyLoad(uri, (new HttpLoader(uri)))
         }
@@ -184,7 +215,7 @@ export class UriLoader extends EventEmitter {
         const stats = await stat(uri)
 
         if (stats.isDirectory()) {
-            throw new Error('Not handled')
+            throw new Error('Not handled directories')
             //return (new DirLoader(uri)).load()
         }
 

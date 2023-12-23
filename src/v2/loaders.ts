@@ -22,9 +22,11 @@ export interface SourceLoader {
 
 export class ProcessArgvLoader implements SourceLoader {
     protected schema: SchemaObject
+    protected resolve: boolean
 
-    public constructor(schema: SchemaObject) {
+    public constructor(schema: SchemaObject, resolve = true) {
         this.schema = schema
+        this.resolve = resolve
     }
 
     public async load(): Promise<Object> {
@@ -32,7 +34,9 @@ export class ProcessArgvLoader implements SourceLoader {
         // @ts-ignore
         delete args._
 
-        return flatDictToDeepObject({data: args, delimiter: '-', schema: this.schema})
+        return this.resolve
+            ? flatDictToDeepObject({data: args, delimiter: '-', schema: this.schema})
+            : args
     }
 }
 

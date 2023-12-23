@@ -53,56 +53,6 @@ describe.only('config', () => {
         })
     })
 
-    it('Simple base config', async () => {
-
-        process.env.MYAPP_LOG_LEVEL='debug'
-        process.argv.push('--log-file=here.log')
-
-        process.env.MYAPP_USERS_0_ID='1'
-        process.env.MYAPP_USERS_0_NAME='Luka'
-        process.env.MYAPP_MAPPINGS_JSON_RESOLVER='JsonResolver'
-
-        process.argv.push('--users-0-name=Miki')
-
-        const myConfig = await loadConfig(configOpts)
-
-        console.log('myConfig', myConfig)
-    })
-
-    it('env ext base config', async () => {
-
-        process.env.MYAPP_LOG_LEVEL='debug'
-
-        process.env.MYAPP_USERID="@include https://dummyjson.com/todos/2#userId"
-        process.env.MYAPP_USERS_0_NAME="@include https://dummyjson.com/todos/2#todo"
-
-        const myConfig = await loadConfig(configOpts)
-
-        console.log('myConfig', myConfig)
-    })
-
-    it('url base config', async () => {
-
-        process.env.MYAPP_LOG_LEVEL='debug'
-
-        process.env.MYAPP_CONFIG_URI='https://dummyjson.com/todos#todos[0]'
-
-        const myConfig = await loadConfig(configOpts)
-
-        console.log('myConfig', myConfig)
-    })
-
-    it('file base config', async () => {
-
-        process.env.MYAPP_LOG_LEVEL='debug'
-
-        process.env.MYAPP_CONFIG_URI='src/v2/config.test.json'
-
-        const myConfig = await loadConfig(configOpts)
-
-        console.log('myConfig', myConfig)
-    })
-
     it.only('multi config', async () => {
 
         process.on('unhandledRejection', console.error)
@@ -115,8 +65,10 @@ describe.only('config', () => {
 
         process.env.BASE_URL="http://api.slowmocking.com"
 
-        process.env.MYAPP_API1URL="$BASE_URL/v1"
+        process.env.MYAPP_API1URL="@include #BASE_URL & '/v1'"
         //process.env.MYAPP_API2URL="@include env:BASE_URL#$ & '/v2'"
+
+        process.argv.push('--users-2-name=fromArgv')
 
         const ac = new AbortController
 
