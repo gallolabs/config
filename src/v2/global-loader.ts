@@ -1,10 +1,12 @@
 import { SchemaObject } from "ajv"
-import { FileLoader, HttpLoader, ProcessArgvLoader, ProcessEnvLoader, SourceLoader } from "./loaders.js"
+import { FileLoader, HttpLoader, IncludeToken, ProcessArgvLoader, ProcessEnvLoader, SourceLoader } from "./loaders.js"
 import { each, set, findKey, mapKeys, cloneDeep } from 'lodash-es'
 import {flatten} from 'uni-flatten'
 import { stat } from "fs/promises"
 import jsonata from 'jsonata'
 import EventEmitter from "events"
+import traverse from "traverse"
+import { dirname, resolve as resolvePath } from 'path'
 
 export class GlobalLoader {
     protected loaders: Record<string, SourceLoader>
@@ -13,15 +15,16 @@ export class GlobalLoader {
     public constructor({envPrefix, schema, uriLoader}: {envPrefix?: string, schema: SchemaObject, uriLoader: UriLoader}) {
         this.uriLoader = uriLoader
         this.loaders = {
-            env: new ProcessEnvLoader({ resolve: true, prefix: envPrefix, schema, uriLoader: this.uriLoader }),
+            env: new ProcessEnvLoader({ resolve: true, prefix: envPrefix, schema }),
             arg: new ProcessArgvLoader(schema)
         }
     }
 
     public async load(): Promise<Object> {
+        //this.uriLoader.clearCaches()
         const baseConfigs = await Promise.all([
-            this.loaders.env.load(),
-            this.loaders.arg.load()
+            this.uriLoader.resolveTokens(await this.loaders.env.load(), ''),
+            this.uriLoader.resolveTokens(await this.loaders.arg.load(), '')
         ])
         const obj: Record<string, any> = cloneDeep(baseConfigs[0])
 
@@ -68,10 +71,10 @@ export class UriLoader extends EventEmitter {
         this.watchChanges = watchChanges
     }
 
-    public async load(uri: string): Promise<Object> {
+    public async load(uri: string, parentUri?: string): Promise<Object> {
         const [unfragmentedUri, ...fragments] = uri.split('#')
 
-        const data = await this.loadUnfragmentedUri(unfragmentedUri)
+        const data = await this.loadUnfragmentedUri(unfragmentedUri, parentUri)
 
         const fragment = fragments.join('#')
 
@@ -79,38 +82,103 @@ export class UriLoader extends EventEmitter {
             return data
         }
 
+        return this.resolveFragment(data, fragment)
+    }
+
+    public clearCaches() {
+        Object.keys(this.loaded).forEach(uri => {
+            delete this.loaded[uri].value
+        })
+    }
+
+    public stopWatches() {
+        Object.keys(this.loaded).forEach(uri => {
+            this.loaded[uri].watchAbortController?.abort()
+        })
+    }
+
+    protected async resolveFragment(data: any, fragment: string) {
         return jsonata(fragment).evaluate(data)
     }
 
     protected async proxyLoad(uri: string, loader: SourceLoader): Promise<Object> {
         if (!this.loaded[uri]) {
             this.loaded[uri] = { loader }
-
-            if (this.watchChanges && loader.watch) {
-                const ac = new AbortController
-                const em = loader.watch(ac.signal)
-                this.loaded[uri].watchAbortController = ac
-
-                em.on('change', () => {
-                    delete this.loaded[uri]?.value
-                    this.emit('change')
-                })
-                em.on('error', () => this.emit('error'))
-            }
         }
+
+        if (this.watchChanges && loader.watch && !this.loaded[uri].watchAbortController) {
+            const ac = new AbortController
+            const em = loader.watch(ac.signal)
+            this.loaded[uri].watchAbortController = ac
+
+            em.on('change', () => {
+                delete this.loaded[uri]?.value
+                this.emit('change')
+            })
+            em.on('error', () => this.emit('error'))
+        }
+
         if (!this.loaded[uri].value) {
-            this.loaded[uri].value = loader.load()
+            this.loaded[uri].value = await loader.load() as any
         }
-        return this.loaded[uri].value!
+
+        return this.resolveTokens(this.loaded[uri].value!, uri)
     }
 
-    protected async loadUnfragmentedUri(uri: string): Promise<Object> {
+    public async resolveTokens(value: any, parentUri: string): Promise<any> {
+        if (value instanceof IncludeToken) {
+            return this.load(value.getUri())
+        }
+
+        if (!(value instanceof Object)) {
+            return value
+        }
+
+        value = cloneDeep(value)
+
+        const resolutions: Promise<any>[] = []
+
+        const self = this
+
+        traverse(value).forEach(function (val) {
+            if (val instanceof IncludeToken) {
+                const resolution = val.getUri().startsWith('#')
+                    ? self.resolveFragment(value, val.getUri().substring(1))
+                    : self.load(val.getUri(), parentUri)
+                resolutions.push(resolution)
+                resolution.then(v => this.update(v))
+            }
+            return val
+        })
+
+        await Promise.all(resolutions)
+
+        return value
+    }
+
+    protected async loadUnfragmentedUri(uri: string, parentUri?: string): Promise<any> {
         if (this.loaded[uri]?.value) {
             return this.loaded[uri].value!
         }
 
+        if (uri.startsWith('env:')) {
+            const envs = await this.proxyLoad('env:', new ProcessEnvLoader({ resolve: false, schema: this.schema }))
+
+            if (uri === 'env:') {
+                return envs
+            }
+
+            return (envs as any)[uri.substring(4)]
+        }
+
         if (uri.startsWith('http://') || uri.startsWith('https://')) {
             return this.proxyLoad(uri, (new HttpLoader(uri)))
+        }
+
+        if (parentUri) {
+            uri = resolvePath(dirname(parentUri), uri)
+        } else {
+            uri = resolvePath(process.cwd(), uri)
         }
 
         const stats = await stat(uri)

@@ -1,6 +1,6 @@
 import { clone } from "lodash-es"
 import { loadConfig } from "./index.js"
-import { once } from "events"
+import { setTimeout } from "timers/promises"
 
 const configOpts = {
     envPrefix: 'MYAPP',
@@ -33,7 +33,10 @@ const configOpts = {
                     }
                 }
             },
-            userId: {type: 'integer'}
+            userId: {type: 'integer'},
+            api1Url: {type: 'string'},
+            api2Url: {type: 'string'},
+            api3Url: {type: 'string'}
         }
     }
 }
@@ -101,13 +104,27 @@ describe.only('config', () => {
     })
 
     it.only('multi config', async () => {
+
+        process.on('unhandledRejection', console.error)
+
         process.env.MYAPP_LOG_LEVEL='debug'
 
-        process.env.MYAPP_CONFIG_URI='src/v2/config.test.json'
+        process.env.MYAPP_CONFIG_URI='src/v2/config.test.yml'
 
         process.env.MYAPP_USERS_0_NAME="@include https://dummyjson.com/todos/2#todo"
 
-        const myConfig = loadConfig({...configOpts, watchChanges: true})
+        process.env.BASE_URL="http://api.slowmocking.com"
+
+        process.env.MYAPP_API1URL="$BASE_URL/v1"
+        //process.env.MYAPP_API2URL="@include env:BASE_URL#$ & '/v2'"
+
+        const ac = new AbortController
+
+        const myConfig = loadConfig({...configOpts, watchChanges: true, abortSignal: ac.signal})
+
+        myConfig.on('error', (error) => {
+            console.error(error)
+        })
 
         console.log('myConfig', await myConfig)
 
@@ -115,6 +132,8 @@ describe.only('config', () => {
             console.log(change)
         })
 
-        await once(myConfig, 'stopped')
+        await setTimeout(10000)
+
+        ac.abort()
     }).timeout(60000)
 })

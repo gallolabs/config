@@ -7,7 +7,6 @@ import minimist from 'minimist'
 import YAML from 'yaml'
 import got from 'got'
 import { extname } from "path"
-import { UriLoader } from "./global-loader.js"
 import chokidar from 'chokidar'
 import EventEmitter from "events"
 // import { extname } from 'path'
@@ -41,13 +40,11 @@ export class ProcessEnvLoader implements SourceLoader {
     protected prefix?: string
     protected resolve: boolean
     protected schema: SchemaObject
-    protected uriLoader: UriLoader
 
-    public constructor({prefix, resolve, schema, uriLoader}: {prefix?: string, resolve?: boolean, schema: SchemaObject, uriLoader: UriLoader}) {
+    public constructor({prefix, resolve, schema}: {prefix?: string, resolve?: boolean, schema: SchemaObject}) {
         this.prefix = prefix
         this.resolve = resolve === undefined ? true : resolve
         this.schema = schema
-        this.uriLoader = uriLoader
     }
 
     public async load(): Promise<Object> {
@@ -63,15 +60,14 @@ export class ProcessEnvLoader implements SourceLoader {
             : process.env
 
         for (const key in env) {
-            if(typeof env[key] === 'string' && (env[key] as string).startsWith('@include')) {
-                env[key] = await this.uriLoader.load((env[key] as string).split(' ').slice(1).join(' '))
+              if(typeof env[key] === 'string' && (env[key] as string).startsWith('@include')) {
+                env[key] = new IncludeToken((env[key] as string).split(' ').slice(1).join(' '))
             }
         }
 
         return this.resolve ? flatDictToDeepObject({data: env, delimiter: '_', schema: this.schema}) : env
     }
 }
-
 
 export class JsonFileLoader implements SourceLoader {
     protected filepath: string
@@ -86,6 +82,18 @@ export class JsonFileLoader implements SourceLoader {
     }
 }
 
+export class IncludeToken {
+    uri: string
+
+    public constructor(uri: string) {
+        this.uri = uri
+    }
+
+    public getUri() {
+        return this.uri
+    }
+}
+
 export class YamlFileLoader implements SourceLoader {
     protected filepath: string
 
@@ -96,8 +104,18 @@ export class YamlFileLoader implements SourceLoader {
     public async load(): Promise<Object> {
         const content = await readFile(this.filepath, {encoding: 'utf8'})
 
+        const customTags: YAML.Tags = [
+            {
+              tag: '!include',
+              resolve(uri: string) {
+                return new IncludeToken(uri)
+              }
+            }
+        ]
+
         const doc = YAML.parseDocument(
-            content
+            content,
+            { customTags }
         )
 
         const warnOrErrors = doc.errors.concat(doc.warnings)
@@ -205,8 +223,6 @@ export class HttpLoader implements SourceLoader {
         return await got(this.url).json()
     }
 }
-
-
 
 function flatDictToDeepObject({data, delimiter, schema}: {data: Record<string, any>, delimiter: string, schema: SchemaObject}) {
 

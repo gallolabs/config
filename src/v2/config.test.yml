@@ -1,5 +1,8 @@
-log:
-  level: warn
+userId: 5000
 
 users:
   - name: Luke
+  - name: !include ./config.test.json#userId
+
+api2Url: !include "env:BASE_URL#$ & '/v2'"
+api3Url: !include "#userId"

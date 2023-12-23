@@ -33,7 +33,7 @@ export interface WatchChangesEventEmitter<Config> extends EventEmitter {
 }
 
 export function loadConfig<Config extends Object>(opts: ConfigLoaderOpts & {abortSignal?: AbortSignal}): ConfigLoader<Config> & Promise<any> {
-    const loader = new ConfigLoader(opts)
+    const loader = new ConfigLoader<Config>(opts)
 
     loader.start(opts.abortSignal)
 
@@ -66,6 +66,8 @@ export class ConfigLoader<Config extends Object> extends EventEmitter implements
     protected config?: Config
     protected globalLoader: GlobalLoader
     protected uriLoader: UriLoader
+    protected needReload = false
+    protected loading = false
 
     public constructor(opts: ConfigLoaderOpts) {
         super()
@@ -100,11 +102,30 @@ export class ConfigLoader<Config extends Object> extends EventEmitter implements
         if (!this.running) {
             return
         }
-        this.emit('stopped')
+
+        this.uriLoader.stopWatches()
+
         this.running = false
     }
 
+    // Avoid loading concurrency, but keep in mind we wanted it
     protected async load() {
+        if (this.loading) {
+            this.needReload = true
+            return
+        }
+
+        this.needReload = false
+        this.loading = true
+        await this._load()
+        this.loading = false
+
+        if (this.needReload) {
+            this.load()
+        }
+    }
+
+    protected async _load() {
         this.emit('load')
 
         let configLoad: Object = await this.globalLoader.load()
