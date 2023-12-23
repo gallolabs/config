@@ -50,6 +50,15 @@ export interface ConfigLoaderOpts {
     watchChanges?: boolean
 }
 
+export class ConfigError extends Error {
+    name = 'ConfigError'
+    config?: Object
+    constructor(message: string, options: ErrorOptions & {config?: Object}) {
+        super(message, {cause: options.cause})
+        this.config = options.config
+    }
+}
+
 export class ConfigLoader<Config extends Object> extends EventEmitter implements WatchChangesEventEmitter<Config> {
     protected schema: SchemaObject
     protected watchChanges: boolean
@@ -96,7 +105,7 @@ export class ConfigLoader<Config extends Object> extends EventEmitter implements
         try {
             config = this.validate(configLoad)
         } catch (e) {
-            this.emit('error')
+            this.emit('error', e)
             return
         }
 
@@ -173,7 +182,10 @@ export class ConfigLoader<Config extends Object> extends EventEmitter implements
                 + (firstError.instancePath ? firstError.instancePath.substring(1).replace('/', '.') + ' ' : '')
                 + firstError.message
 
-            throw new Error(message)
+            throw new ConfigError(message, {
+                config: candidateConfig,
+                cause: ajv.errors![0]
+            })
         }
 
         return candidateConfig as Config

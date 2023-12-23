@@ -7,6 +7,7 @@ import minimist from 'minimist'
 import YAML from 'yaml'
 import got from 'got'
 import { extname } from "path"
+import { UriLoader } from "./global-loader.js"
 // import { extname } from 'path'
 // @ts-ignore
 // import flat from 'flat'
@@ -26,6 +27,8 @@ export class ProcessArgvLoader implements SourceLoader {
 
     public async load(): Promise<Object> {
         const args = minimist(process.argv)
+        // @ts-ignore
+        delete args._
 
         return flatDictToDeepObject({data: args, delimiter: '-', schema: this.schema})
     }
@@ -35,11 +38,13 @@ export class ProcessEnvLoader implements SourceLoader {
     protected prefix?: string
     protected resolve: boolean
     protected schema: SchemaObject
+    protected uriLoader: UriLoader
 
-    public constructor({prefix, resolve, schema}: {prefix?: string, resolve?: boolean, schema: SchemaObject}) {
+    public constructor({prefix, resolve, schema, uriLoader}: {prefix?: string, resolve?: boolean, schema: SchemaObject, uriLoader: UriLoader}) {
         this.prefix = prefix
         this.resolve = resolve === undefined ? true : resolve
         this.schema = schema
+        this.uriLoader = uriLoader
     }
 
     public async load(): Promise<Object> {
@@ -47,12 +52,18 @@ export class ProcessEnvLoader implements SourceLoader {
             ? this.prefix.toLowerCase() + (this.prefix.endsWith('_') ? '' : '_')
             : null
 
-        const env = fullPrefix
+        const env: Record<string, any> = fullPrefix
             ? chain(process.env)
                 .pickBy((_, key) => key.toLowerCase().startsWith(fullPrefix))
                 .mapKeys((_, key) => key.substring(fullPrefix.length))
                 .value()
             : process.env
+
+        for (const key in env) {
+            if(typeof env[key] === 'string' && (env[key] as string).startsWith('@include')) {
+                env[key] = await this.uriLoader.load((env[key] as string).split(' ').slice(1).join(' '))
+            }
+        }
 
         return this.resolve ? flatDictToDeepObject({data: env, delimiter: '_', schema: this.schema}) : env
     }

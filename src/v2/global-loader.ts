@@ -1,18 +1,18 @@
 import { SchemaObject } from "ajv"
 import { FileLoader, HttpLoader, ProcessArgvLoader, ProcessEnvLoader, SourceLoader } from "./loaders.js"
-import { each, set, findKey, mapKeys } from 'lodash-es'
+import { each, set, findKey, mapKeys, cloneDeep } from 'lodash-es'
 import {flatten} from 'uni-flatten'
 import { stat } from "fs/promises"
 import jsonata from 'jsonata'
 
 export class GlobalLoader {
     protected loaders: Record<string, SourceLoader>
-    protected schema: SchemaObject
+    protected uriLoader: UriLoader
 
     public constructor({envPrefix, schema}: {envPrefix?: string, schema: SchemaObject}) {
-        this.schema = schema
+        this.uriLoader = new UriLoader(schema)
         this.loaders = {
-            env: new ProcessEnvLoader({ resolve: true, prefix: envPrefix, schema }),
+            env: new ProcessEnvLoader({ resolve: true, prefix: envPrefix, schema, uriLoader: this.uriLoader }),
             arg: new ProcessArgvLoader(schema)
         }
     }
@@ -22,8 +22,7 @@ export class GlobalLoader {
             this.loaders.env.load(),
             this.loaders.arg.load()
         ])
-
-        const obj: Record<string, any> = baseConfigs[0]
+        const obj: Record<string, any> = cloneDeep(baseConfigs[0])
 
         each(flatten(baseConfigs[1] as any), (v, path) => {
             set(obj, path, v)
@@ -34,7 +33,7 @@ export class GlobalLoader {
         if (configKey) {
             const config = mapKeys(obj[configKey], (_, k) => k.toLowerCase())
             if (config.uri) {
-                const pathLoadedObj = await (new UriLoader(this.schema)).load(config.uri)
+                const pathLoadedObj = await this.uriLoader.load(config.uri)
 
                 Object.assign(obj, pathLoadedObj)
 
@@ -53,11 +52,16 @@ export class GlobalLoader {
     }
 }
 
-class UriLoader {
+export class UriLoader {
     protected schema: SchemaObject
+    protected loaded: Record<string, Object> = {}
 
     public constructor(schema: SchemaObject) {
         this.schema = schema
+    }
+
+    public getLoaded() {
+        return Object.keys(this.loaded)
     }
 
     public async load(uri: string): Promise<Object> {
@@ -75,8 +79,12 @@ class UriLoader {
     }
 
     protected async loadUnfragmentedUri(uri: string): Promise<Object> {
+        if (this.loaded[uri]) {
+            return this.loaded[uri]
+        }
+
         if (uri.startsWith('http://') || uri.startsWith('https://')) {
-            return (new HttpLoader(uri)).load()
+            return this.loaded[uri] = (new HttpLoader(uri)).load()
         }
 
         const stats = await stat(uri)
@@ -86,6 +94,6 @@ class UriLoader {
             //return (new DirLoader(uri)).load()
         }
 
-        return (new FileLoader(this.schema, uri)).load()
+        return this.loaded[uri] = (new FileLoader(this.schema, uri)).load()
     }
 }

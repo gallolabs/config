@@ -65,6 +65,18 @@ describe.only('config', () => {
         console.log('myConfig', myConfig)
     })
 
+    it('env ext base config', async () => {
+
+        process.env.MYAPP_LOG_LEVEL='debug'
+
+        process.env.MYAPP_USERID="@include https://dummyjson.com/todos/2#userId"
+        process.env.MYAPP_USERS_0_NAME="@include https://dummyjson.com/todos/2#todo"
+
+        const myConfig = await loadConfig(configOpts)
+
+        console.log('myConfig', myConfig)
+    })
+
     it('url base config', async () => {
 
         process.env.MYAPP_LOG_LEVEL='debug'
@@ -81,6 +93,18 @@ describe.only('config', () => {
         process.env.MYAPP_LOG_LEVEL='debug'
 
         process.env.MYAPP_CONFIG_URI='src/v2/config.test.json'
+
+        const myConfig = await loadConfig(configOpts)
+
+        console.log('myConfig', myConfig)
+    })
+
+    it.only('multi config', async () => {
+        process.env.MYAPP_LOG_LEVEL='debug'
+
+        process.env.MYAPP_CONFIG_URI='src/v2/config.test.json'
+
+        process.env.MYAPP_USERS_0_NAME="@include https://dummyjson.com/todos/2#todo"
 
         const myConfig = await loadConfig(configOpts)
 
