@@ -8,6 +8,8 @@ import YAML from 'yaml'
 import got from 'got'
 import { extname } from "path"
 import { UriLoader } from "./global-loader.js"
+import chokidar from 'chokidar'
+import EventEmitter from "events"
 // import { extname } from 'path'
 // @ts-ignore
 // import flat from 'flat'
@@ -15,7 +17,8 @@ import { UriLoader } from "./global-loader.js"
 // import deepmerge from 'deepmerge'
 
 export interface SourceLoader {
-    load(): Promise<Object> | Object
+    load(): Promise<Object>
+    watch?(abortSignal: AbortSignal): EventEmitter
 }
 
 export class ProcessArgvLoader implements SourceLoader {
@@ -70,17 +73,6 @@ export class ProcessEnvLoader implements SourceLoader {
 }
 
 
-
-
-
-
-
-
-
-
-
-
-
 export class JsonFileLoader implements SourceLoader {
     protected filepath: string
 
@@ -120,6 +112,7 @@ export class YamlFileLoader implements SourceLoader {
 
 export class FileLoader implements SourceLoader {
     protected loader: SourceLoader
+    protected path: string
 
     protected extLoaders: Record<string, (schema: SchemaObject, filepath: string) => SourceLoader> = {
         'env': (schema: SchemaObject, filepath: string) => new EnvFileLoader(schema, filepath),
@@ -130,6 +123,7 @@ export class FileLoader implements SourceLoader {
 
     public constructor(schema: SchemaObject, path: string) {
         const ext = extname(path).substring(1)
+        this.path = path
 
         const loaderFactory = this.extLoaders[ext]
 
@@ -137,6 +131,27 @@ export class FileLoader implements SourceLoader {
             throw new Error('Unhandled extension ' + ext)
         }
         this.loader = loaderFactory(schema, path)
+    }
+
+    public watch(abortSignal: AbortSignal) {
+
+        const em = new EventEmitter
+
+        const watcher = chokidar
+            .watch(this.path)
+            .on('all', async(type) => {
+                if (type === 'add') {
+                    return
+                }
+                em.emit('change')
+            })
+            .on('error', (error) => em.emit('error', error))
+
+        abortSignal.addEventListener('abort', () => {
+            watcher.close().catch((error) => em.emit('error', error))
+        })
+
+        return em
     }
 
     public async load(): Promise<Object> {

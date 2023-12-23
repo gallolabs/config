@@ -1,5 +1,6 @@
 import { clone } from "lodash-es"
 import { loadConfig } from "./index.js"
+import { once } from "events"
 
 const configOpts = {
     envPrefix: 'MYAPP',
@@ -106,8 +107,14 @@ describe.only('config', () => {
 
         process.env.MYAPP_USERS_0_NAME="@include https://dummyjson.com/todos/2#todo"
 
-        const myConfig = await loadConfig(configOpts)
+        const myConfig = loadConfig({...configOpts, watchChanges: true})
 
-        console.log('myConfig', myConfig)
-    })
+        console.log('myConfig', await myConfig)
+
+        myConfig.on('change', (change) => {
+            console.log(change)
+        })
+
+        await once(myConfig, 'stopped')
+    }).timeout(60000)
 })

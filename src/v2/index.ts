@@ -2,7 +2,7 @@ import { get } from 'lodash-es'
 import fjp, {Operation} from 'fast-json-patch'
 import { EventEmitter, once } from 'events'
 import {SchemaObject, default as Ajv} from 'ajv'
-import { GlobalLoader } from './global-loader.js'
+import { GlobalLoader, UriLoader } from './global-loader.js'
 const  { compare } = fjp
 
 // adapted from https://github.com/sindresorhus/execa/blob/main/lib/promise.js
@@ -32,10 +32,10 @@ export interface WatchChangesEventEmitter<Config> extends EventEmitter {
     on(event: string, listener: (arg: {value: unknown, previousValue: unknown, config: Config, previousConfig: Config}) => void): this
 }
 
-export function loadConfig<Config extends Object>(opts: ConfigLoaderOpts): ConfigLoader<Config> & Promise<any> {
+export function loadConfig<Config extends Object>(opts: ConfigLoaderOpts & {abortSignal?: AbortSignal}): ConfigLoader<Config> & Promise<any> {
     const loader = new ConfigLoader(opts)
 
-    loader.start()
+    loader.start(opts.abortSignal)
 
     return mergePromise(loader, once(loader, 'loaded').then(v => v[0]))
 }
@@ -65,6 +65,7 @@ export class ConfigLoader<Config extends Object> extends EventEmitter implements
     protected running = false
     protected config?: Config
     protected globalLoader: GlobalLoader
+    protected uriLoader: UriLoader
 
     public constructor(opts: ConfigLoaderOpts) {
         super()
@@ -72,7 +73,8 @@ export class ConfigLoader<Config extends Object> extends EventEmitter implements
         this.watchChanges = opts.watchChanges || false
         this.globalLoader = new GlobalLoader({
             envPrefix: opts.envPrefix,
-            schema: this.schema
+            schema: this.schema,
+            uriLoader: this.uriLoader = new UriLoader(this.schema, this.watchChanges)
         })
     }
 
@@ -81,18 +83,25 @@ export class ConfigLoader<Config extends Object> extends EventEmitter implements
             throw new Error('Already running')
         }
         if (abortSignal?.aborted) {
-            throw abortSignal.reason
+            return
         }
         abortSignal?.addEventListener('abort', () => this.stop())
         this.running = true
 
+        this.uriLoader.on('change', () => {
+            this.load()
+        })
+        this.uriLoader.on('error', (error) => this.emit('error', error))
+
         this.load()
     }
 
-    public stop() {
+    protected stop() {
         if (!this.running) {
             return
         }
+        this.emit('stopped')
+        this.running = false
     }
 
     protected async load() {
@@ -109,11 +118,11 @@ export class ConfigLoader<Config extends Object> extends EventEmitter implements
             return
         }
 
-        const previousConfig = config
+        const previousConfig = this.config
         this.config = config
         this.emit('loaded', config)
 
-        if (this.config) {
+        if (previousConfig) {
             this.emitChanges(previousConfig, config)
         }
     }
