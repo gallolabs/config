@@ -1,16 +1,73 @@
-import { readFile, readdir } from "fs/promises"
-import parseEnvString from 'parse-env-string'
-import {each, set, omit, get} from 'lodash-es'
+import { readFile /*, readdir*/ } from "fs/promises"
+// import parseEnvString from 'parse-env-string'
+import {each, set, omit, get, chain} from 'lodash-es'
 import traverse from 'traverse'
 import {type SchemaObject} from 'ajv'
 import minimist from 'minimist'
 import YAML from 'yaml'
 import got from 'got'
-import { extname } from "path"
+// import { extname } from 'path'
+// @ts-ignore
+// import flat from 'flat'
+// const flattenObject = flat.flatten
+// import deepmerge from 'deepmerge'
 
-interface SourceLoader {
-    load(schema: SchemaObject): Promise<Object> | Object
+export interface SourceLoader {
+    load(): Promise<Object> | Object
 }
+
+export class ProcessArgvLoader implements SourceLoader {
+    protected schema: SchemaObject
+
+    public constructor(schema: SchemaObject) {
+        this.schema = schema
+    }
+
+    public async load(): Promise<Object> {
+        const args = minimist(process.argv)
+
+        return flatDictToDeepObject({data: args, delimiter: '-', schema: this.schema})
+    }
+}
+
+export class ProcessEnvLoader implements SourceLoader {
+    protected prefix?: string
+    protected resolve: boolean
+    protected schema: SchemaObject
+
+    public constructor({prefix, resolve, schema}: {prefix?: string, resolve?: boolean, schema: SchemaObject}) {
+        this.prefix = prefix
+        this.resolve = resolve === undefined ? true : resolve
+        this.schema = schema
+    }
+
+    public async load(): Promise<Object> {
+        const fullPrefix = this.prefix
+            ? this.prefix.toLowerCase() + (this.prefix.endsWith('_') ? '' : '_')
+            : null
+
+        const env = fullPrefix
+            ? chain(process.env)
+                .pickBy((_, key) => key.toLowerCase().startsWith(fullPrefix))
+                .mapKeys((_, key) => key.substring(fullPrefix.length))
+                .value()
+            : process.env
+
+        return this.resolve ? flatDictToDeepObject({data: env, delimiter: '_', schema: this.schema}) : env
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
 
 export class JsonFileLoader implements SourceLoader {
     protected filepath: string = 'src/v2/config.test.json'
@@ -49,65 +106,65 @@ export class YamlFileLoader implements SourceLoader {
     }
 }
 
-export class FileLoader implements SourceLoader {
-    protected extLoaders: Record<string, (filepath: string) => SourceLoader> = {
-        'env': (filepath: string) => new EnvFileLoader(filepath),
-        'json': (filepath: string) => new JsonFileLoader(filepath),
-        'yml': (filepath: string) => new YamlFileLoader(filepath),
-        'yaml': (filepath: string) => new YamlFileLoader(filepath)
-    }
+// export class FileLoader implements SourceLoader {
+//     protected extLoaders: Record<string, (filepath: string) => SourceLoader> = {
+//         'env': (filepath: string) => new EnvFileLoader(filepath),
+//         'json': (filepath: string) => new JsonFileLoader(filepath),
+//         'yml': (filepath: string) => new YamlFileLoader(filepath),
+//         'yaml': (filepath: string) => new YamlFileLoader(filepath)
+//     }
 
-    protected loader: SourceLoader
+//     protected loader: SourceLoader
 
-    public constructor(filepath: string) {
-        const ext = extname(filepath)
+//     public constructor(filepath: string) {
+//         const ext = extname(filepath)
 
-        const loaderFactory = this.extLoaders[ext]
+//         const loaderFactory = this.extLoaders[ext]
 
-        if (!loaderFactory) {
-            throw new Error('Unhandled extension ' + ext)
-        }
+//         if (!loaderFactory) {
+//             throw new Error('Unhandled extension ' + ext)
+//         }
 
-        this.loader = loaderFactory(filepath)
-    }
+//         this.loader = loaderFactory(filepath)
+//     }
 
-    public async load(schema: SchemaObject): Promise<Object> {
-        return this.loader.load(schema)
-    }
-}
+//     public async load(schema: SchemaObject): Promise<Object> {
+//         return this.loader.load(schema)
+//     }
+// }
 
-export class DirLoader implements SourceLoader {
-    protected dirpath: string
+// export class DirLoader implements SourceLoader {
+//     protected dirpath: string
 
-    public constructor(dirpath: string) {
-        this.dirpath = dirpath
-    }
+//     public constructor(dirpath: string) {
+//         this.dirpath = dirpath
+//     }
 
-    public async load(schema: SchemaObject): Promise<Object> {
-        const files = await readdir(this.dirpath)
+//     public async load(schema: SchemaObject): Promise<Object> {
+//         const files = await readdir(this.dirpath)
 
-        const loaders = files.map(file => new FileLoader(file))
+//         const loaders = files.map(file => new FileLoader(file))
 
-        const objs = await Promise.all(loaders.map(loader => loader.load(schema)))
+//         const objs = await Promise.all(loaders.map(loader => loader.load(schema)))
 
-        return objs.reduce((obj, _obj) => ({...obj, ..._obj}), {})
-    }
-}
+//         return objs.reduce((obj, _obj) => ({...obj, ..._obj}), {})
+//     }
+// }
 
-export class EnvFileLoader implements SourceLoader {
-    protected filepath: string = 'src/v2/config.test.env'
+// export class EnvFileLoader implements SourceLoader {
+//     protected filepath: string = 'src/v2/config.test.env'
 
-    public constructor(filepath: string) {
-        this.filepath = filepath
-    }
+//     public constructor(filepath: string) {
+//         this.filepath = filepath
+//     }
 
-    public async load(schema: SchemaObject): Promise<Object> {
-        const content = await readFile(this.filepath, {encoding: 'utf8'})
-        const env = parseEnvString(content.replace(/^\s*#.*/gm, '').replace(/\n/g, ' '))
+//     public async load(schema: SchemaObject): Promise<Object> {
+//         const content = await readFile(this.filepath, {encoding: 'utf8'})
+//         const env = parseEnvString(content.replace(/^\s*#.*/gm, '').replace(/\n/g, ' '))
 
-        return flatDictToDeepObject({data: env, delimiter: '_', schema})
-    }
-}
+//         return flatDictToDeepObject({data: env, delimiter: '_', schema})
+//     }
+// }
 
 export class HttpLoader implements SourceLoader {
     protected endpoint: string = 'https://dummyjson.com/todos/1'
@@ -117,21 +174,7 @@ export class HttpLoader implements SourceLoader {
     }
 }
 
-export class ProcessArgvLoader implements SourceLoader {
-    public async load(schema: SchemaObject): Promise<Object> {
-        const args = minimist(process.argv.slice(2))
 
-        return flatDictToDeepObject({data: args, delimiter: '-', schema})
-    }
-}
-
-export class ProcessEnvLoader implements SourceLoader {
-    public async load(schema: SchemaObject): Promise<Object> {
-        const env = process.env
-
-        return flatDictToDeepObject({data: env, delimiter: '_', schema})
-    }
-}
 
 function flatDictToDeepObject({data, delimiter, schema}: {data: Record<string, any>, delimiter: string, schema: SchemaObject}) {
 
@@ -160,6 +203,12 @@ function resolveFlatPath(path: string, delimiter: string, schema: any): string {
                 }
             }
         }
+
+        if (typeof schema.additionalProperties === 'object') {
+            const key = path.split(delimiter)[0]
+            const resolvedNext = resolveFlatPath(path.substring(key.length + delimiter.length), delimiter, schema.additionalProperties)
+            return key + (resolvedNext ? '.' + resolvedNext : '')
+        }
     }
 
     if (schema.type === 'array') {
@@ -170,11 +219,6 @@ function resolveFlatPath(path: string, delimiter: string, schema: any): string {
 
     return path.split(delimiter).join('.')
 }
-
-
-
-
-
 
 function unrefSchema(schema: Object) {
     function resolveRef(o: any): any {
@@ -197,3 +241,40 @@ function unrefSchema(schema: Object) {
 
     return resolved
 }
+
+//CONFIG_PATH=myApp
+
+// interface AggragateLoaderOptions {
+//     mergePolicy: 'shallow' | 'deep' | 'path-set'
+// }
+
+// export class AggregateLoader implements SourceLoader {
+//     protected loaders: SourceLoader[]
+//     protected options: AggragateLoaderOptions
+
+//     public constructor(loaders: SourceLoader[], options: AggragateLoaderOptions) {
+//         this.loaders = loaders
+//         this.options = options
+//     }
+
+//     public async load(schema: SchemaObject): Promise<Object> {
+//         const objs = await Promise.all(this.loaders.map(loader => loader.load(schema)))
+
+//         if (this.options.mergePolicy === 'shallow') {
+//             return objs.reduce((obj, _obj) => ({...obj, ..._obj}), {})
+//         }
+
+//         if (this.options.mergePolicy === 'path-set') {
+//             const obj = {}
+
+//             objs.forEach(_obj => {
+//                 const flatObj = flattenObject(_obj)
+//                 each(flatObj, (v, path) => {
+//                     set(obj, path, v)
+//                 })
+//             })
+//         }
+
+//         return objs.reduce((obj, _obj) => deepmerge(obj, _obj), {})
+//     }
+// }
