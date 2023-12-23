@@ -64,7 +64,7 @@ export class ProcessEnvLoader implements SourceLoader {
             : process.env
 
         for (const key in env) {
-              if(typeof env[key] === 'string' && (env[key] as string).startsWith('@include')) {
+              if(typeof env[key] === 'string' && (env[key] as string).startsWith('@ref')) {
                 env[key] = new IncludeToken((env[key] as string).split(' ').slice(1).join(' '))
             }
         }
@@ -110,7 +110,7 @@ export class YamlFileLoader implements SourceLoader {
 
         const customTags: YAML.Tags = [
             {
-              tag: '!include',
+              tag: '!ref',
               resolve(uri: string) {
                 return new IncludeToken(uri)
               }

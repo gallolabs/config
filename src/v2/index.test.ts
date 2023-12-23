@@ -61,12 +61,12 @@ describe.only('config', () => {
 
         process.env.MYAPP_CONFIG_URI='src/v2/config.test.yml'
 
-        process.env.MYAPP_USERS_0_NAME="@include https://dummyjson.com/todos/2#todo"
+        process.env.MYAPP_USERS_0_NAME="@ref https://dummyjson.com/todos/2#todo"
 
         process.env.BASE_URL="http://api.slowmocking.com"
 
-        process.env.MYAPP_API1URL="@include #BASE_URL & '/v1'"
-        //process.env.MYAPP_API2URL="@include env:BASE_URL#$ & '/v2'"
+        process.env.MYAPP_API1URL="@ref #BASE_URL & '/v1'"
+        //process.env.MYAPP_API2URL="@ref env:BASE_URL#$ & '/v2'"
 
         process.argv.push('--users-2-name=fromArgv')
 
