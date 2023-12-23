@@ -1,6 +1,54 @@
+import { clone } from "lodash-es"
 import { loadConfig } from "./index.js"
 
+const configOpts = {
+    envPrefix: 'MYAPP',
+    schema: {
+        type: 'object',
+        properties: {
+            log: {
+                type: 'object',
+                properties: {
+                    level: {type: 'string'},
+                    file: {type: 'string'}
+                }
+            },
+            users: {
+                type: 'array',
+                items: {
+                    type: 'object',
+                    properties: {
+                        id: {type: 'integer'},
+                        name: {type: 'string'}
+                    }
+                }
+            },
+            mappings: {
+                type: 'object',
+                additionalProperties: {
+                    type: 'object',
+                    properties: {
+                        resolver: {type: 'string'}
+                    }
+                }
+            },
+            userId: {type: 'integer'}
+        }
+    }
+}
+
 describe.only('config', () => {
+    before(() => {
+        const envs = clone(process.env)
+        const argvCount = process.argv.length
+
+        beforeEach(() => {
+            Object.keys(process.env).forEach(k => { delete process.env[k] })
+            Object.assign(process.env, envs)
+            process.argv.splice(argvCount - 1)
+        })
+    })
+
     it('Simple base config', async () => {
 
         process.env.MYAPP_LOG_LEVEL='debug'
@@ -12,40 +60,29 @@ describe.only('config', () => {
 
         process.argv.push('--users-0-name=Miki')
 
-        const myConfig = await loadConfig({
-            envPrefix: 'MYAPP',
-            schema: {
-                type: 'object',
-                properties: {
-                    log: {
-                        type: 'object',
-                        properties: {
-                            level: {type: 'string'},
-                            file: {type: 'string'}
-                        }
-                    },
-                    users: {
-                        type: 'array',
-                        items: {
-                            type: 'object',
-                            properties: {
-                                id: {type: 'integer'},
-                                name: {type: 'string'}
-                            }
-                        }
-                    },
-                    mappings: {
-                        type: 'object',
-                        additionalProperties: {
-                            type: 'object',
-                            properties: {
-                                resolver: {type: 'string'}
-                            }
-                        }
-                    }
-                }
-            }
-        })
+        const myConfig = await loadConfig(configOpts)
+
+        console.log('myConfig', myConfig)
+    })
+
+    it('url base config', async () => {
+
+        process.env.MYAPP_LOG_LEVEL='debug'
+
+        process.env.MYAPP_CONFIG_URI='https://dummyjson.com/todos#todos[0]'
+
+        const myConfig = await loadConfig(configOpts)
+
+        console.log('myConfig', myConfig)
+    })
+
+    it('file base config', async () => {
+
+        process.env.MYAPP_LOG_LEVEL='debug'
+
+        process.env.MYAPP_CONFIG_URI='src/v2/config.test.json'
+
+        const myConfig = await loadConfig(configOpts)
 
         console.log('myConfig', myConfig)
     })

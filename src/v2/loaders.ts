@@ -1,11 +1,12 @@
 import { readFile /*, readdir*/ } from "fs/promises"
-// import parseEnvString from 'parse-env-string'
+import parseEnvString from 'parse-env-string'
 import {each, set, omit, get, chain} from 'lodash-es'
 import traverse from 'traverse'
 import {type SchemaObject} from 'ajv'
 import minimist from 'minimist'
 import YAML from 'yaml'
 import got from 'got'
+import { extname } from "path"
 // import { extname } from 'path'
 // @ts-ignore
 // import flat from 'flat'
@@ -70,9 +71,9 @@ export class ProcessEnvLoader implements SourceLoader {
 
 
 export class JsonFileLoader implements SourceLoader {
-    protected filepath: string = 'src/v2/config.test.json'
+    protected filepath: string
 
-    public constructor(filepath: string) {
+    public constructor(_schema: any, filepath: string) {
         this.filepath = filepath
     }
 
@@ -83,9 +84,9 @@ export class JsonFileLoader implements SourceLoader {
 }
 
 export class YamlFileLoader implements SourceLoader {
-    protected filepath: string = 'src/v2/config.test.yml'
+    protected filepath: string
 
-    public constructor(filepath: string) {
+    public constructor(_schema: any, filepath: string) {
         this.filepath = filepath
     }
 
@@ -106,32 +107,31 @@ export class YamlFileLoader implements SourceLoader {
     }
 }
 
-// export class FileLoader implements SourceLoader {
-//     protected extLoaders: Record<string, (filepath: string) => SourceLoader> = {
-//         'env': (filepath: string) => new EnvFileLoader(filepath),
-//         'json': (filepath: string) => new JsonFileLoader(filepath),
-//         'yml': (filepath: string) => new YamlFileLoader(filepath),
-//         'yaml': (filepath: string) => new YamlFileLoader(filepath)
-//     }
+export class FileLoader implements SourceLoader {
+    protected loader: SourceLoader
 
-//     protected loader: SourceLoader
+    protected extLoaders: Record<string, (schema: SchemaObject, filepath: string) => SourceLoader> = {
+        'env': (schema: SchemaObject, filepath: string) => new EnvFileLoader(schema, filepath),
+        'json': (schema: SchemaObject, filepath: string) => new JsonFileLoader(schema, filepath),
+        'yml': (schema: SchemaObject, filepath: string) => new YamlFileLoader(schema, filepath),
+        'yaml': (schema: SchemaObject, filepath: string) => new YamlFileLoader(schema, filepath)
+    }
 
-//     public constructor(filepath: string) {
-//         const ext = extname(filepath)
+    public constructor(schema: SchemaObject, path: string) {
+        const ext = extname(path).substring(1)
 
-//         const loaderFactory = this.extLoaders[ext]
+        const loaderFactory = this.extLoaders[ext]
 
-//         if (!loaderFactory) {
-//             throw new Error('Unhandled extension ' + ext)
-//         }
+        if (!loaderFactory) {
+            throw new Error('Unhandled extension ' + ext)
+        }
+        this.loader = loaderFactory(schema, path)
+    }
 
-//         this.loader = loaderFactory(filepath)
-//     }
-
-//     public async load(schema: SchemaObject): Promise<Object> {
-//         return this.loader.load(schema)
-//     }
-// }
+    public async load(): Promise<Object> {
+        return this.loader.load()
+    }
+}
 
 // export class DirLoader implements SourceLoader {
 //     protected dirpath: string
@@ -151,26 +151,32 @@ export class YamlFileLoader implements SourceLoader {
 //     }
 // }
 
-// export class EnvFileLoader implements SourceLoader {
-//     protected filepath: string = 'src/v2/config.test.env'
+export class EnvFileLoader implements SourceLoader {
+    protected filepath: string
+    protected schema: SchemaObject
 
-//     public constructor(filepath: string) {
-//         this.filepath = filepath
-//     }
-
-//     public async load(schema: SchemaObject): Promise<Object> {
-//         const content = await readFile(this.filepath, {encoding: 'utf8'})
-//         const env = parseEnvString(content.replace(/^\s*#.*/gm, '').replace(/\n/g, ' '))
-
-//         return flatDictToDeepObject({data: env, delimiter: '_', schema})
-//     }
-// }
-
-export class HttpLoader implements SourceLoader {
-    protected endpoint: string = 'https://dummyjson.com/todos/1'
+    public constructor(schema: SchemaObject, filepath: string) {
+        this.filepath = filepath
+        this.schema = schema
+    }
 
     public async load(): Promise<Object> {
-        return await got(this.endpoint).json()
+        const content = await readFile(this.filepath, {encoding: 'utf8'})
+        const env = parseEnvString(content.replace(/^\s*#.*/gm, '').replace(/\n/g, ' '))
+
+        return flatDictToDeepObject({data: env, delimiter: '_', schema: this.schema})
+    }
+}
+
+export class HttpLoader implements SourceLoader {
+    protected url: string
+
+    public constructor(url: string) {
+        this.url = url
+    }
+
+    public async load(): Promise<Object> {
+        return await got(this.url).json()
     }
 }
 
