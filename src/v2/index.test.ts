@@ -36,7 +36,9 @@ const configOpts = {
             userId: {type: 'integer'},
             api1Url: {type: 'string'},
             api2Url: {type: 'string'},
-            api3Url: {type: 'string'}
+            api3Url: {type: 'string'},
+            api4Url: {type: 'string'},
+            apiId: {type: 'integer'}
         }
     }
 }

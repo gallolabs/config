@@ -1,5 +1,5 @@
 import { SchemaObject } from "ajv"
-import { FileLoader, HttpLoader, IncludeToken, ProcessArgvLoader, ProcessEnvLoader, SourceLoader } from "./loaders.js"
+import { FileLoader, HttpLoader, IncludeToken, ProcessArgvLoader, ProcessEnvLoader, QueryToken, SourceLoader } from "./loaders.js"
 import { each, set, findKey, mapKeys, cloneDeep } from 'lodash-es'
 import {flatten} from 'uni-flatten'
 import { stat } from "fs/promises"
@@ -82,10 +82,10 @@ export class UriLoader extends EventEmitter {
         this.watchChanges = watchChanges
     }
 
-    public async load(uri: string, parentUri?: string): Promise<Object> {
+    public async load(uri: string, parentUri?: string, opts?: object): Promise<Object> {
         const [unfragmentedUri, ...fragments] = uri.split('#')
 
-        const data = await this.loadUnfragmentedUri(unfragmentedUri, parentUri)
+        const data = await this.loadUnfragmentedUri(unfragmentedUri, parentUri, opts)
 
         const fragment = fragments.join('#')
 
@@ -108,8 +108,12 @@ export class UriLoader extends EventEmitter {
         })
     }
 
-    protected async resolveFragment(data: any, fragment: string) {
-        return jsonata(fragment).evaluate(data)
+    protected async resolveFragment(data: any, fragment: string, parentUri?: string) {
+        return jsonata(fragment).evaluate(data, {
+            ref: (uri: string, opts: object) => {
+                return this.load(uri, parentUri, opts)
+            }
+        })
     }
 
     protected async proxyLoad(uri: string, loader: SourceLoader): Promise<Object> {
@@ -158,14 +162,21 @@ export class UriLoader extends EventEmitter {
 
                 if (val.getUri().startsWith('#')) {
                     if (parentUri === 'env:' || parentUri === 'arg:') {
-                        resolution = self.load(parentUri + val.getUri())
+                        resolution = self.load(parentUri + val.getUri(), undefined, val.getOpts())
                     } else {
                         resolution = self.resolveFragment(value, val.getUri().substring(1))
                     }
                 } else {
-                    resolution = self.load(val.getUri(), parentUri)
+                    resolution = self.load(val.getUri(), parentUri, val.getOpts())
                 }
 
+                resolutions.push(resolution)
+                resolution.then(v => this.update(v))
+            }
+            if (val instanceof QueryToken) {
+                let resolution: Promise<any>
+
+                resolution = self.resolveFragment({}, val.getQuery(), parentUri)
                 resolutions.push(resolution)
                 resolution.then(v => this.update(v))
             }
@@ -177,7 +188,7 @@ export class UriLoader extends EventEmitter {
         return value
     }
 
-    protected async loadUnfragmentedUri(uri: string, parentUri?: string): Promise<any> {
+    protected async loadUnfragmentedUri(uri: string, parentUri?: string, opts?: object): Promise<any> {
         if (this.loaded[uri]?.value) {
             return this.loaded[uri].value!
         }
@@ -203,7 +214,7 @@ export class UriLoader extends EventEmitter {
         }
 
         if (uri.startsWith('http://') || uri.startsWith('https://')) {
-            return this.proxyLoad(uri, (new HttpLoader(uri)))
+            return this.proxyLoad(uri, (new HttpLoader(uri, this.schema, opts)))
         }
 
         if (parentUri) {

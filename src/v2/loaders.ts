@@ -20,6 +20,38 @@ export interface SourceLoader {
     watch?(abortSignal: AbortSignal): EventEmitter
 }
 
+
+export class IncludeToken {
+    uri: string
+    opts: object
+
+    public constructor(uri: string, opts?: object) {
+        this.uri = uri
+        this.opts = opts || {}
+    }
+
+    public getUri() {
+        return this.uri
+    }
+
+    public getOpts() {
+        return this.opts
+    }
+}
+
+export class QueryToken {
+    query: string
+
+    public constructor(query: string) {
+        this.query = query
+    }
+
+    public getQuery() {
+        return this.query
+    }
+}
+
+
 export class ProcessArgvLoader implements SourceLoader {
     protected schema: SchemaObject
     protected resolve: boolean
@@ -52,6 +84,7 @@ export class ProcessEnvLoader implements SourceLoader {
     }
 
     public async load(): Promise<Object> {
+        // Todo move to globalLoader
         const fullPrefix = this.prefix
             ? this.prefix.toLowerCase() + (this.prefix.endsWith('_') ? '' : '_')
             : null
@@ -62,59 +95,53 @@ export class ProcessEnvLoader implements SourceLoader {
                 .mapKeys((_, key) => key.substring(fullPrefix.length))
                 .value()
             : process.env
-
+// Todo move to parser
         for (const key in env) {
-              if(typeof env[key] === 'string' && (env[key] as string).startsWith('@ref')) {
+            if(typeof env[key] === 'string' && (env[key] as string).startsWith('@ref')) {
                 env[key] = new IncludeToken((env[key] as string).split(' ').slice(1).join(' '))
             }
+            if(typeof env[key] === 'string' && (env[key] as string).startsWith('@query')) {
+                env[key] = new QueryToken((env[key] as string).split(' ').slice(1).join(' '))
+            }
         }
-
+        // Todo move to globalLoader
         return this.resolve ? flatDictToDeepObject({data: env, delimiter: '_', schema: this.schema}) : env
     }
 }
 
-export class JsonFileLoader implements SourceLoader {
-    protected filepath: string
+interface SourceParser {
+    parse: (content: string) => Promise<Object>
+}
 
-    public constructor(_schema: any, filepath: string) {
-        this.filepath = filepath
-    }
-
-    public async load(): Promise<Object> {
-        const content = await readFile(this.filepath, {encoding: 'utf8'})
+export class JsonParser implements SourceParser {
+    public async parse(content: string): Promise<Object> {
         return JSON.parse(content)
     }
 }
 
-export class IncludeToken {
-    uri: string
-
-    public constructor(uri: string) {
-        this.uri = uri
-    }
-
-    public getUri() {
-        return this.uri
-    }
-}
-
-export class YamlFileLoader implements SourceLoader {
-    protected filepath: string
-
-    public constructor(_schema: any, filepath: string) {
-        this.filepath = filepath
-    }
-
-    public async load(): Promise<Object> {
-        const content = await readFile(this.filepath, {encoding: 'utf8'})
-
+export class YamlParser implements SourceParser {
+    public async parse(content: string): Promise<Object> {
         const customTags: YAML.Tags = [
             {
               tag: '!ref',
               resolve(uri: string) {
                 return new IncludeToken(uri)
               }
-            }
+            },
+            {
+              tag: '!query',
+              resolve(query: string) {
+                return new QueryToken(query)
+              }
+            },
+            {
+              tag: '!ref',
+              collection: 'map',
+              resolve(obj: any) {
+                obj = obj.toJSON()
+                return new IncludeToken(obj.uri, obj.opts)
+              }
+            },
         ]
 
         const doc = YAML.parseDocument(
@@ -132,27 +159,41 @@ export class YamlFileLoader implements SourceLoader {
     }
 }
 
+export class EnvParser implements SourceParser {
+    protected schema: SchemaObject
+
+    public constructor(schema: SchemaObject) {
+        this.schema = schema
+    }
+
+    public async parse(content: string): Promise<Object> {
+        const env = parseEnvString(content.replace(/^\s*#.*/gm, '').replace(/\n/g, ' '))
+
+        return flatDictToDeepObject({data: env, delimiter: '_', schema: this.schema})
+    }
+}
+
 export class FileLoader implements SourceLoader {
-    protected loader: SourceLoader
+    protected parser: SourceParser
     protected path: string
 
-    protected extLoaders: Record<string, (schema: SchemaObject, filepath: string) => SourceLoader> = {
-        'env': (schema: SchemaObject, filepath: string) => new EnvFileLoader(schema, filepath),
-        'json': (schema: SchemaObject, filepath: string) => new JsonFileLoader(schema, filepath),
-        'yml': (schema: SchemaObject, filepath: string) => new YamlFileLoader(schema, filepath),
-        'yaml': (schema: SchemaObject, filepath: string) => new YamlFileLoader(schema, filepath)
+    protected extParsers: Record<string, (schema: SchemaObject) => SourceParser> = {
+        'env': (schema: SchemaObject) => new EnvParser(schema),
+        'json': () => new JsonParser(),
+        'yml': () => new YamlParser(),
+        'yaml': () => new YamlParser()
     }
 
     public constructor(schema: SchemaObject, path: string) {
         const ext = extname(path).substring(1)
         this.path = path
 
-        const loaderFactory = this.extLoaders[ext]
+        const parserFactory = this.extParsers[ext]
 
-        if (!loaderFactory) {
+        if (!parserFactory) {
             throw new Error('Unhandled extension ' + ext)
         }
-        this.loader = loaderFactory(schema, path)
+        this.parser = parserFactory(schema)
     }
 
     public watch(abortSignal: AbortSignal) {
@@ -177,7 +218,8 @@ export class FileLoader implements SourceLoader {
     }
 
     public async load(): Promise<Object> {
-        return this.loader.load()
+        const content = await readFile(this.path, {encoding: 'utf8'})
+        return this.parser.parse(content)
     }
 }
 
@@ -199,32 +241,71 @@ export class FileLoader implements SourceLoader {
 //     }
 // }
 
-export class EnvFileLoader implements SourceLoader {
-    protected filepath: string
-    protected schema: SchemaObject
-
-    public constructor(schema: SchemaObject, filepath: string) {
-        this.filepath = filepath
-        this.schema = schema
-    }
-
-    public async load(): Promise<Object> {
-        const content = await readFile(this.filepath, {encoding: 'utf8'})
-        const env = parseEnvString(content.replace(/^\s*#.*/gm, '').replace(/\n/g, ' '))
-
-        return flatDictToDeepObject({data: env, delimiter: '_', schema: this.schema})
-    }
-}
 
 export class HttpLoader implements SourceLoader {
     protected url: string
+    protected schema: SchemaObject
+    protected opts: object
 
-    public constructor(url: string) {
+    protected mimeParsers: Record<string, (schema: SchemaObject) => SourceParser> = {
+        'text/plain': (schema: SchemaObject) => new EnvParser(schema),
+        'application/json': () => new JsonParser(),
+        'application/yaml': () => new YamlParser()
+    }
+
+    public constructor(url: string, schema: SchemaObject, opts?: object) {
         this.url = url
+        this.schema = schema
+        this.opts = opts || {}
     }
 
     public async load(): Promise<Object> {
-        return await got(this.url).json()
+        const res = await got(this.url)
+
+        const contentType = res.headers['content-type']
+            ? res.headers['content-type']
+            : 'text/plain'
+
+        const mimeType = contentType.split(';')[0].trim()
+
+        const parserFactory = this.mimeParsers[mimeType]
+
+        if (!parserFactory) {
+            throw new Error('Unhandled type ' + mimeType)
+        }
+
+        const parser = parserFactory(this.schema)
+
+        return parser.parse(res.body)
+    }
+
+    public watch(abortSignal: AbortSignal) {
+
+        const em = new EventEmitter
+
+        ;(async() => {
+            let content = await got(this.url).text()
+
+            const nodeTimeout = setInterval(async () => {
+                try {
+                    const newContent = await got(this.url).text()
+
+                    if (newContent !== content) {
+                        em.emit('change')
+                    }
+
+                    content = newContent
+                } catch (e) {
+                    em.emit('error', e)
+                }
+            }, (this.opts as any).watchInterval || 60000)
+
+            abortSignal.addEventListener('abort', () => {
+                clearInterval(nodeTimeout)
+            })
+        })()
+
+        return em
     }
 }
 
@@ -293,40 +374,3 @@ function unrefSchema(schema: Object) {
 
     return resolved
 }
-
-//CONFIG_PATH=myApp
-
-// interface AggragateLoaderOptions {
-//     mergePolicy: 'shallow' | 'deep' | 'path-set'
-// }
-
-// export class AggregateLoader implements SourceLoader {
-//     protected loaders: SourceLoader[]
-//     protected options: AggragateLoaderOptions
-
-//     public constructor(loaders: SourceLoader[], options: AggragateLoaderOptions) {
-//         this.loaders = loaders
-//         this.options = options
-//     }
-
-//     public async load(schema: SchemaObject): Promise<Object> {
-//         const objs = await Promise.all(this.loaders.map(loader => loader.load(schema)))
-
-//         if (this.options.mergePolicy === 'shallow') {
-//             return objs.reduce((obj, _obj) => ({...obj, ..._obj}), {})
-//         }
-
-//         if (this.options.mergePolicy === 'path-set') {
-//             const obj = {}
-
-//             objs.forEach(_obj => {
-//                 const flatObj = flattenObject(_obj)
-//                 each(flatObj, (v, path) => {
-//                     set(obj, path, v)
-//                 })
-//             })
-//         }
-
-//         return objs.reduce((obj, _obj) => deepmerge(obj, _obj), {})
-//     }
-// }

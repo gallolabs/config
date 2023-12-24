@@ -7,3 +7,9 @@ users:
 api2Url: !ref env:BASE_URL#$ & '/v2'
 api3Url: !ref "#userId"
 
+api4Url: !query "$replace($ref('env:BASE_URL'), 'http:', 'https:') & '/v4'"
+
+apiId: !ref
+  uri: https://random-data-api.com/api/beer/random_beer#id
+  opts:
+    watchInterval: 1000
