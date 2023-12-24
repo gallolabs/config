@@ -217,7 +217,7 @@ export class UriLoader extends EventEmitter {
             return this.proxyLoad(uri, (new HttpLoader(uri, this.schema, opts)))
         }
 
-        if (parentUri) {
+        if (parentUri && uri.startsWith('.')) {
             uri = resolvePath(dirname(parentUri), uri)
         } else {
             uri = resolvePath(process.cwd(), uri)

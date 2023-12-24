@@ -38,7 +38,9 @@ const configOpts = {
             api2Url: {type: 'string'},
             api3Url: {type: 'string'},
             api4Url: {type: 'string'},
-            apiId: {type: 'integer'}
+            apiId: {type: 'integer'},
+            password: {type: 'string'},
+            logo: {type: 'string'}
         }
     }
 }

@@ -9,6 +9,7 @@ import got from 'got'
 import { extname } from "path"
 import chokidar from 'chokidar'
 import EventEmitter from "events"
+import isBinaryPath from "is-binary-path"
 // import { extname } from 'path'
 // @ts-ignore
 // import flat from 'flat'
@@ -174,7 +175,7 @@ export class EnvParser implements SourceParser {
 }
 
 export class FileLoader implements SourceLoader {
-    protected parser: SourceParser
+    protected parser?: SourceParser
     protected path: string
 
     protected extParsers: Record<string, (schema: SchemaObject) => SourceParser> = {
@@ -188,12 +189,9 @@ export class FileLoader implements SourceLoader {
         const ext = extname(path).substring(1)
         this.path = path
 
-        const parserFactory = this.extParsers[ext]
+        let parserFactory = this.extParsers[ext]
 
-        if (!parserFactory) {
-            throw new Error('Unhandled extension ' + ext)
-        }
-        this.parser = parserFactory(schema)
+        this.parser = parserFactory ? parserFactory(schema) : undefined
     }
 
     public watch(abortSignal: AbortSignal) {
@@ -218,8 +216,13 @@ export class FileLoader implements SourceLoader {
     }
 
     public async load(): Promise<Object> {
+        if (!this.parser && isBinaryPath(this.path)) {
+            return (await readFile(this.path)).toString('base64')
+        }
+
         const content = await readFile(this.path, {encoding: 'utf8'})
-        return this.parser.parse(content)
+
+        return this.parser ? this.parser.parse(content) : content
     }
 }
 
