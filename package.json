@@ -4,7 +4,7 @@
   "description": "",
   "main": "dist/index.js",
   "scripts": {
-    "build": "rm -Rf dist && tspc",
+    "build": "rm -Rf dist && tsc",
     "test": "npm run build && npx c8 --all --src 'src' --exclude '*/*test*' --report-dir=/tmp/nyc mocha 'dist/**/*test*.js'",
     "deploy": "npm run test && rm dist/*test* && npm login && trap 'npm logout' EXIT && release-it --no-git.requireCleanWorkingDir"
   },
@@ -26,7 +26,6 @@
     "yaml": "^2.3.4"
   },
   "devDependencies": {
-    "@gallolabs/typescript-transform-to-json-schema": "^0.1.1",
     "@types/lodash-es": "^4.17.12",
     "@types/minimist": "^1.2.5",
     "@types/mocha": "^10.0.6",
@@ -36,7 +35,6 @@
     "c8": "^8.0.1",
     "mocha": "^10.2.0",
     "release-it": "^17.0.1",
-    "ts-patch": "^3.1.1",
     "typescript": "^5.3.3"
   },
   "files": [

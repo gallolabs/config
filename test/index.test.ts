@@ -1,5 +1,5 @@
 import { clone } from "lodash-es"
-import { loadConfig } from "./index.js"
+import { loadConfig } from "../src/index.js"
 import { setTimeout } from "timers/promises"
 
 const configOpts = {
@@ -64,7 +64,7 @@ describe.only('config', () => {
 
         process.env.MYAPP_LOG_LEVEL='debug'
 
-        process.env.MYAPP_CONFIG_URI='src/v2/config.test.yml'
+        process.env.MYAPP_CONFIG_URI='test/config.test.yml'
 
         process.env.MYAPP_USERS_0_NAME="@ref https://dummyjson.com/todos/2#todo"
 
