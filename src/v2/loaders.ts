@@ -21,7 +21,6 @@ export interface SourceLoader {
     watch?(abortSignal: AbortSignal): EventEmitter
 }
 
-
 export class IncludeToken {
     uri: string
     opts: object
@@ -38,6 +37,44 @@ export class IncludeToken {
     public getOpts() {
         return this.opts
     }
+}
+
+export function createIncludeTokenFromString(string: string) {
+    // let uriWithoutFragmentPart: string = ''
+    // let fragmentPart: string = ''
+    // let optsPart: string = ''
+
+    // let step: 'uwfp' | 'fp' | 'op'  = 'uwfp'
+
+    // for (let letter in string) {
+    //     switch(step) {
+    //         case 'uwfp':
+    //             if (letter === '#') {
+    //                 step = 'fp'
+    //             } else if (letter === ' ') {
+    //                 step = 'op'
+    //             } else {
+    //                 uriWithoutFragmentPart+= letter
+    //             }
+    //             break
+    //         case 'fp':
+    //             if (letter === ' ' && fragmentPart.startsWith())
+    //     }
+
+    // }
+
+    const [uri, ...optsParts] = string.split(' ')
+
+    const opts = optsParts.length ? JSON.parse(optsParts.join(' ')) : {} // jsonata(optsParts.join(' ')).evaluate(null)
+    return new IncludeToken(uri, opts)
+
+}
+
+export function createIncludeTokenFromObject(obj: Record<string, any>) {
+    if (!obj.uri) {
+        throw new Error('Missing uri')
+    }
+    return new IncludeToken(obj.uri, obj.opts)
 }
 
 export class QueryToken {
@@ -99,7 +136,7 @@ export class ProcessEnvLoader implements SourceLoader {
 // Todo move to parser
         for (const key in env) {
             if(typeof env[key] === 'string' && (env[key] as string).startsWith('@ref')) {
-                env[key] = new IncludeToken((env[key] as string).split(' ').slice(1).join(' '))
+                env[key] = createIncludeTokenFromString((env[key] as string).split(' ').slice(1).join(' '))
             }
             if(typeof env[key] === 'string' && (env[key] as string).startsWith('@query')) {
                 env[key] = new QueryToken((env[key] as string).split(' ').slice(1).join(' '))
@@ -217,7 +254,7 @@ export class FileLoader implements SourceLoader {
 
     public async load(): Promise<Object> {
         if (!this.parser && isBinaryPath(this.path)) {
-            return (await readFile(this.path)).toString('base64')
+            return 'data:mimetypetodo;base64,' +  (await readFile(this.path)).toString('base64')
         }
 
         const content = await readFile(this.path, {encoding: 'utf8'})

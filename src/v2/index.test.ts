@@ -7,6 +7,7 @@ const configOpts = {
     schema: {
         type: 'object',
         properties: {
+            run: {type: 'boolean'},
             log: {
                 type: 'object',
                 properties: {
@@ -69,10 +70,12 @@ describe.only('config', () => {
 
         process.env.BASE_URL="http://api.slowmocking.com"
 
-        process.env.MYAPP_API1URL="@ref #BASE_URL & '/v1'"
+        process.env.MYAPP_API1URL="@ref #BASE_URL&'/v1'"
         //process.env.MYAPP_API2URL="@ref env:BASE_URL#$ & '/v2'"
 
         process.argv.push('--users-2-name=fromArgv')
+
+        process.argv.push('--no-run')
 
         const ac = new AbortController
 

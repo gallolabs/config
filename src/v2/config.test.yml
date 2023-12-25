@@ -4,7 +4,7 @@ users:
   - name: Luke
   - name: !ref ./config.test.json#userId
 
-api2Url: !ref env:BASE_URL#$ & '/v2'
+api2Url: !ref env:BASE_URL#$&'/v2'
 api3Url: !ref "#userId"
 
 api4Url: !query "$replace($ref('env:BASE_URL'), 'http:', 'https:') & '/v4'"
@@ -16,4 +16,4 @@ apiId: !ref
 
 password: !ref ./password
 
-logo: !ref logo_w200.jpeg
+logo: !ref ./config.test.jpg
