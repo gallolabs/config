@@ -1,6 +1,6 @@
 import { SchemaObject } from "ajv"
 import parseEnvString from "parse-env-string"
-import { IncludeToken, QueryToken } from "./loaders.js"
+import { IncludeToken, QueryToken } from "./readers.js"
 import YAML from 'yaml'
 import { flatDictToDeepObject } from "./unflat-mapper.js"
 

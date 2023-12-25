@@ -1,5 +1,5 @@
 import { SchemaObject } from "ajv"
-import { FileLoader, HttpLoader, IncludeToken, ProcessArgvLoader, ProcessEnvLoader, QueryToken, SourceLoader } from "./loaders.js"
+import { FileLoader, HttpLoader, IncludeToken, ProcessArgvLoader, ProcessEnvLoader, QueryToken, SourceReader } from "./readers.js"
 import { each, set, findKey, mapKeys, cloneDeep } from 'lodash-es'
 import {flatten} from 'uni-flatten'
 import { stat } from "fs/promises"
@@ -9,7 +9,7 @@ import traverse from "traverse"
 import { dirname, resolve as resolvePath } from 'path'
 
 export class GlobalLoader {
-    protected loaders: Record<string, SourceLoader>
+    protected loaders: Record<string, SourceReader>
     protected uriLoader: UriLoader
 
     public constructor({envPrefix, schema, uriLoader}: {envPrefix?: string, schema: SchemaObject, uriLoader: UriLoader}) {
@@ -70,7 +70,7 @@ export class GlobalLoader {
 export class UriLoader extends EventEmitter {
     protected schema: SchemaObject
     protected loaded: Record<string, {
-        loader: SourceLoader
+        loader: SourceReader
         watchAbortController?: AbortController
         value?: Promise<Object>
     }> = {}
@@ -116,7 +116,7 @@ export class UriLoader extends EventEmitter {
         })
     }
 
-    protected async proxyLoad(uri: string, loader: SourceLoader): Promise<Object> {
+    protected async proxyLoad(uri: string, loader: SourceReader): Promise<Object> {
         if (!this.loaded[uri]) {
             this.loaded[uri] = { loader }
         }

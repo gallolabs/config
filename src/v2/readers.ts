@@ -15,7 +15,7 @@ import { flatDictToDeepObject } from "./unflat-mapper.js"
 // const flattenObject = flat.flatten
 // import deepmerge from 'deepmerge'
 
-export interface SourceLoader {
+export interface SourceReader {
     load(): Promise<Object>
     watch?(abortSignal: AbortSignal): EventEmitter
 }
@@ -89,7 +89,7 @@ export class QueryToken {
 }
 
 
-export class ProcessArgvLoader implements SourceLoader {
+export class ProcessArgvLoader implements SourceReader {
     protected schema: SchemaObject
     protected resolve: boolean
 
@@ -109,7 +109,7 @@ export class ProcessArgvLoader implements SourceLoader {
     }
 }
 
-export class ProcessEnvLoader implements SourceLoader {
+export class ProcessEnvLoader implements SourceReader {
     protected prefix?: string
     protected resolve: boolean
     protected schema: SchemaObject
@@ -147,7 +147,7 @@ export class ProcessEnvLoader implements SourceLoader {
 }
 
 
-export class FileLoader implements SourceLoader {
+export class FileLoader implements SourceReader {
     protected parser?: ContentParser
     protected path: string
 
@@ -218,7 +218,7 @@ export class FileLoader implements SourceLoader {
 // }
 
 
-export class HttpLoader implements SourceLoader {
+export class HttpLoader implements SourceReader {
     protected url: string
     protected schema: SchemaObject
     protected opts: object
