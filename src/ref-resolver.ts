@@ -1,70 +1,14 @@
 import { SchemaObject } from "ajv"
 import { FileLoader, HttpLoader, IncludeToken, ProcessArgvLoader, ProcessEnvLoader, QueryToken, SourceReader } from "./readers.js"
-import { each, set, findKey, mapKeys, cloneDeep } from 'lodash-es'
-import {flatten} from 'uni-flatten'
+import { cloneDeep } from 'lodash-es'
 import { stat } from "fs/promises"
 import jsonata from 'jsonata'
 import EventEmitter from "events"
 import traverse from "traverse"
 import { dirname, resolve as resolvePath } from 'path'
 
-export class GlobalLoader {
-    protected loaders: Record<string, SourceReader>
-    protected uriLoader: UriLoader
+export class RefResolver {
 
-    public constructor({envPrefix, schema, uriLoader}: {envPrefix?: string, schema: SchemaObject, uriLoader: UriLoader}) {
-        this.uriLoader = uriLoader
-        this.loaders = {
-            env: new ProcessEnvLoader({ resolve: true, prefix: envPrefix, schema }),
-            arg: new ProcessArgvLoader(schema, true)
-        }
-    }
-
-    public async load(): Promise<Object> {
-        //this.uriLoader.clearCaches()
-        const baseConfigs = await Promise.all([
-            this.uriLoader.resolveTokens(await this.loaders.env.load(), 'env:'),
-            this.uriLoader.resolveTokens(await this.loaders.arg.load(), 'arg:')
-        ])
-
-        const obj: Record<string, any> = cloneDeep(baseConfigs[0])
-
-        each(flatten(baseConfigs[1] as any), (v, path) => {
-            if (v === undefined) {
-                return
-            }
-            set(obj, path, v)
-        })
-
-
-        const configKey = findKey(obj, (_, k) => k.toLowerCase() === 'config')
-
-        if (configKey) {
-            const config = mapKeys(obj[configKey], (_, k) => k.toLowerCase())
-            if (config.uri) {
-                const pathLoadedObj = await this.uriLoader.load(config.uri)
-
-                Object.assign(obj, pathLoadedObj)
-
-                each(flatten(baseConfigs[0] as any), (v, path) => {
-                    if (v === undefined) {
-                        return
-                    }
-                    set(obj, path, v)
-                })
-
-                each(flatten(baseConfigs[1] as any), (v, path) => {
-                    if (v === undefined) {
-                        return
-                    }
-                    set(obj, path, v)
-                })
-
-            }
-        }
-
-        return obj
-    }
 }
 
 export class UriLoader extends EventEmitter {

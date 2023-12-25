@@ -1,9 +1,11 @@
-import { get } from 'lodash-es'
+import { each, set, findKey, mapKeys, cloneDeep, get } from 'lodash-es'
 import fjp, {Operation} from 'fast-json-patch'
 import { EventEmitter, once } from 'events'
 import {SchemaObject, default as Ajv} from 'ajv'
-import { GlobalLoader, UriLoader } from './global-loader.js'
+import { UriLoader } from './ref-resolver.js'
 const  { compare } = fjp
+import {flatten} from 'uni-flatten'
+import { ProcessArgvLoader, ProcessEnvLoader, SourceReader } from './readers.js'
 
 // adapted from https://github.com/sindresorhus/execa/blob/main/lib/promise.js
 const nativePromisePrototype = (async () => {})().constructor.prototype;
@@ -219,5 +221,64 @@ export class ConfigLoader<Config extends Object> extends EventEmitter implements
         }
 
         return candidateConfig as Config
+    }
+}
+
+export class GlobalLoader {
+    protected loaders: Record<string, SourceReader>
+    protected uriLoader: UriLoader
+
+    public constructor({envPrefix, schema, uriLoader}: {envPrefix?: string, schema: SchemaObject, uriLoader: UriLoader}) {
+        this.uriLoader = uriLoader
+        this.loaders = {
+            env: new ProcessEnvLoader({ resolve: true, prefix: envPrefix, schema }),
+            arg: new ProcessArgvLoader(schema, true)
+        }
+    }
+
+    public async load(): Promise<Object> {
+        //this.uriLoader.clearCaches()
+        const baseConfigs = await Promise.all([
+            this.uriLoader.resolveTokens(await this.loaders.env.load(), 'env:'),
+            this.uriLoader.resolveTokens(await this.loaders.arg.load(), 'arg:')
+        ])
+
+        const obj: Record<string, any> = cloneDeep(baseConfigs[0])
+
+        each(flatten(baseConfigs[1] as any), (v, path) => {
+            if (v === undefined) {
+                return
+            }
+            set(obj, path, v)
+        })
+
+
+        const configKey = findKey(obj, (_, k) => k.toLowerCase() === 'config')
+
+        if (configKey) {
+            const config = mapKeys(obj[configKey], (_, k) => k.toLowerCase())
+            if (config.uri) {
+                const pathLoadedObj = await this.uriLoader.load(config.uri)
+
+                Object.assign(obj, pathLoadedObj)
+
+                each(flatten(baseConfigs[0] as any), (v, path) => {
+                    if (v === undefined) {
+                        return
+                    }
+                    set(obj, path, v)
+                })
+
+                each(flatten(baseConfigs[1] as any), (v, path) => {
+                    if (v === undefined) {
+                        return
+                    }
+                    set(obj, path, v)
+                })
+
+            }
+        }
+
+        return obj
     }
 }

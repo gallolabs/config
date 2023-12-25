@@ -3,6 +3,9 @@ import parseEnvString from "parse-env-string"
 import { IncludeToken, QueryToken } from "./readers.js"
 import YAML from 'yaml'
 import { flatDictToDeepObject } from "./unflat-mapper.js"
+import { parse as parseIni } from 'ini'
+import toml from 'toml'
+import stripJsonComments from 'strip-json-comments'
 
 export interface ContentParser {
     parse: (content: string) => Promise<Object>
@@ -10,9 +13,22 @@ export interface ContentParser {
 
 export class JsonParser implements ContentParser {
     public async parse(content: string): Promise<Object> {
-        return JSON.parse(content)
+        return JSON.parse(stripJsonComments(content))
     }
 }
+
+export class IniParser implements ContentParser {
+    public async parse(content: string): Promise<Object> {
+        return parseIni(content)
+    }
+}
+
+export class TomlParser implements ContentParser {
+    public async parse(content: string): Promise<Object> {
+        return toml.parse(content)
+    }
+}
+
 
 export class YamlParser implements ContentParser {
     public async parse(content: string): Promise<Object> {
