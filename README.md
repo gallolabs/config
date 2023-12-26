@@ -20,7 +20,9 @@ Global Workflow :
     + Events 'change:xxx.xxx.xxx' are emitted with all the tree. For example if admin.identity.name is modified, are emitted :
         * change:admin
         * change:admin.identity
-        * change:admin.identity.name 
+        * change:admin.identity.name
+
+Notes: To use watch, both configLoader must be configured to support it, and provided config must activate it (ex CONFIG_OPTS_WATCH=true) 
 
 Ref / Uri workflow :
 - It is possible to load uri, providing transformation as fragment and options

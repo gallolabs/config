@@ -1,19 +1,21 @@
+import { RefResolver, Reference } from "./ref-resolver.js"
 
-export class RefToken {
+export abstract class Token {
+    abstract resolve(refResolver: RefResolver, reference: Reference): Promise<any>
+}
+
+export class RefToken extends Token {
     uri: string
     opts: object
 
     public constructor(uri: string, opts?: object) {
+        super()
         this.uri = uri
         this.opts = opts || {}
     }
 
-    public getUri() {
-        return this.uri
-    }
-
-    public getOpts() {
-        return this.opts
+    public async resolve(refResolver: RefResolver, reference: Reference) {
+        return refResolver.resolve(this.uri, this.opts, reference)
     }
 }
 
@@ -55,14 +57,15 @@ export function createIncludeTokenFromObject(obj: Record<string, any>) {
     return new RefToken(obj.uri, obj.opts)
 }
 
-export class QueryToken {
+export class QueryToken extends Token {
     query: string
 
     public constructor(query: string) {
+        super()
         this.query = query
     }
 
-    public getQuery() {
-        return this.query
+    public async resolve(refResolver: RefResolver, reference: Reference) {
+        return refResolver.resolve('#' + this.query, reference.opts, reference)
     }
 }

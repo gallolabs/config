@@ -1,239 +1,155 @@
-import { SchemaObject } from "ajv"
-import { Reader, ReaderFactory, builtinReaderFactories } from "./readers.js"
-import { cloneDeep } from 'lodash-es'
-import { stat } from "fs/promises"
+import { Reader, HttpReader } from "./readers.js"
+import { cloneDeep, isEqual } from 'lodash-es'
 import jsonata from 'jsonata'
-import EventEmitter from "events"
 import traverse from "traverse"
-import { dirname, resolve as resolvePath } from 'path'
+import { Parser } from "./parsers.js"
+import { Token } from "./tokens.js"
+import EventEmitter from "events"
 
 export interface RefResolingOpts {
     // including readers & parsers options
+    watch?: boolean
+    [k: string]: any
 }
 
-export class RefResolver {
-    protected readerFactories = builtinReaderFactories
+export interface Reference {
+    uriWithoutFragment: string
+    opts: RefResolingOpts
+    reader: Reader
+    abortController: AbortController
+    data: Promise<any>
+}
+
+export class RefResolver extends EventEmitter{
+    protected readers: Reader[] = [
+        new HttpReader
+    ]
+
+    protected parsers: Parser[] = []
+
+    protected references: Reference[] = []
 
     public constructor(
-        {additionalReaderFactories}:
-        {additionalReaderFactories?: ReaderFactory<any>[]}
+        {additionalReaders}:
+        {additionalReaders?: Reader[]}
     ) {
-        if (additionalReaderFactories) {
-            this.readerFactories = [...additionalReaderFactories, ...this.readerFactories]
+        super()
+        if (additionalReaders) {
+            this.readers = [...this.readers, ...additionalReaders]
         }
     }
 
-    public async resolve(uri: string, opts: RefResolingOpts, parentReader?: Reader): Promise<any> {
-        let [unfragmentedUri, ...fragments] = uri.split('#')
+    public clear() {
+        // remove cache and stop watchers
+        this.references.forEach(reference => reference.abortController.abort())
+        this.references = []
+    }
+
+    public async resolve(uri: string, opts: RefResolingOpts, parentReference?: Reference): Promise<any> {
+        const [uriWithoutFragment, ...fragments] = uri.split('#')
         const fragment = fragments.join('#')
+
+        const uriWithoutFragmentHasScheme = uriWithoutFragment.includes(':')
 
         // parentReader is http://x/a.json and called ./b.json, calling
         // Reader a.json to resolve ./b.json as http://x/b.json
-        if (parentReader && parentReader.resolveUri) {
-            unfragmentedUri = parentReader.resolveUri(unfragmentedUri)
-        }
+        const absoluteUriWithoutFragment =
+            uriWithoutFragmentHasScheme && parentReference && parentReference.reader.resolveUri
+            ? parentReference.reader.resolveUri(uriWithoutFragment, parentReference.uriWithoutFragment)
+            : uriWithoutFragment
 
-        if (!parentReader && !unfragmentedUri) {
+        if (!parentReference && !absoluteUriWithoutFragment) {
             throw new Error('Unable to transform no ressource')
         }
 
-        const reader = unfragmentedUri
-            ? await this.getReaderFor(unfragmentedUri, opts)
-            : parentReader
+        let reference: Reference
 
-        const data = await reader!.read()
-
-        if (!fragment) {
-            return data
-        }
-
-        return this.applyTransformation(data, fragment, reader!)
-    }
-
-    protected async getReaderFor(unfragmentedUri: string, opts: RefResolingOpts): Promise<Reader> {
-        for (const readerFactory of this.readerFactories) {
-            if (await readerFactory.canRead(unfragmentedUri)) {
-                return readerFactory.create(unfragmentedUri, opts)
-            }
-        }
-
-        throw new Error('Unable to find reader for ' + unfragmentedUri)
-    }
-
-    protected applyTransformation(data: any, fragment: string, reader: Reader): Promise<any> {
-        return jsonata(fragment).evaluate(data, {
-            ref: (uri: string, opts?: RefResolingOpts) => {
-                return this.resolve(uri, opts || {}, reader)
-            }
-        })
-    }
-}
-
-
-
-export class UriLoader extends EventEmitter {
-    protected schema: SchemaObject
-    protected loaded: Record<string, {
-        loader: Reader
-        watchAbortController?: AbortController
-        value?: Promise<Object>
-    }> = {}
-    protected watchChanges: boolean
-
-    public constructor(schema: SchemaObject, watchChanges: boolean) {
-        super()
-        this.schema = schema
-        this.watchChanges = watchChanges
-    }
-
-    public async load(uri: string, parentUri?: string, opts?: object): Promise<Object> {
-        const [unfragmentedUri, ...fragments] = uri.split('#')
-
-        const data = await this.loadUnfragmentedUri(unfragmentedUri, parentUri, opts)
-
-        const fragment = fragments.join('#')
-
-        if (!fragment) {
-            return data
-        }
-
-        return this.resolveFragment(data, fragment)
-    }
-
-    public clearCaches() {
-        Object.keys(this.loaded).forEach(uri => {
-            delete this.loaded[uri].value
-        })
-    }
-
-    public stopWatches() {
-        Object.keys(this.loaded).forEach(uri => {
-            this.loaded[uri].watchAbortController?.abort()
-        })
-    }
-
-    protected async resolveFragment(data: any, fragment: string, parentUri?: string) {
-        return jsonata(fragment).evaluate(data, {
-            ref: (uri: string, opts: object) => {
-                return this.load(uri, parentUri, opts)
-            }
-        })
-    }
-
-    protected async proxyLoad(uri: string, loader: Reader): Promise<Object> {
-        if (!this.loaded[uri]) {
-            this.loaded[uri] = { loader }
-        }
-
-        if (this.watchChanges && loader.watch && !this.loaded[uri].watchAbortController) {
-            const ac = new AbortController
-            const em = loader.watch(ac.signal)
-            this.loaded[uri].watchAbortController = ac
-
-            em.on('change', () => {
-                delete this.loaded[uri]?.value
-                this.emit('change')
+        if (!absoluteUriWithoutFragment) {
+            reference = parentReference!
+        } else {
+            const existingReference = this.references.find(reference => {
+                return reference.uriWithoutFragment === absoluteUriWithoutFragment
+                    && isEqual(reference.opts, opts)
             })
-            em.on('error', () => this.emit('error'))
+
+            if (existingReference) {
+                reference = existingReference
+            } else {
+                const reader = this.readers.find(reader => reader.canRead(absoluteUriWithoutFragment))
+
+                if (!reader) {
+                    throw new Error('Unable to find reader for ' + absoluteUriWithoutFragment)
+                }
+
+                const abortController = new AbortController
+
+                reference = {
+                    uriWithoutFragment: absoluteUriWithoutFragment,
+                    abortController,
+                    opts,
+                    reader,
+                    data: Promise.resolve()
+                }
+
+                reference.data = (async() => {
+                    const rawData = await reader.read(absoluteUriWithoutFragment, opts, abortController.signal)
+
+                    rawData.on('stale', () => {
+                        this.emit('stale')
+                    })
+                    rawData.on('error', () => this.emit('error'))
+
+                    const contentType = opts.contentType || rawData.getContentType()
+                    const parser = this.parsers.find(parser => parser.canParse(contentType))
+
+                    if (!parser) {
+                        throw new Error('Unable to find parser for ' + contentType + ' on ' + absoluteUriWithoutFragment)
+                    }
+
+                    return await this.resolveTokens(await parser.parse(rawData.getContent(), opts), reference)
+                })()
+
+                this.references.push(reference)
+            }
         }
 
-        if (!this.loaded[uri].value) {
-            this.loaded[uri].value = await loader.load() as any
+        if (!fragment) {
+            return reference.data
         }
 
-        return this.resolveTokens(this.loaded[uri].value!, uri)
+        return jsonata(fragment).evaluate(reference.data, {
+            ref: (uri: string, opts?: RefResolingOpts) => {
+                return this.resolve(uri, opts || {}, reference)
+            }
+        })
     }
 
-    public async resolveTokens(value: any, parentUri: string): Promise<any> {
-        if (value instanceof RefToken) {
-            return this.load(value.getUri())
+    protected async resolveTokens(data: any, reference: Reference) {
+        if (data instanceof Token) {
+            return this.resolveToken(data, reference)
         }
 
-        if (!(value instanceof Object)) {
-            return value
-        }
-
-        value = cloneDeep(value)
+        data = cloneDeep(data)
 
         const resolutions: Promise<any>[] = []
 
         const self = this
 
-        traverse(value).forEach(function (val) {
-            if (val instanceof RefToken) {
-
-                let resolution: Promise<any>
-
-                if (val.getUri().startsWith('#')) {
-                    if (parentUri === 'env:' || parentUri === 'arg:') {
-                        resolution = self.load(parentUri + val.getUri(), undefined, val.getOpts())
-                    } else {
-                        resolution = self.resolveFragment(value, val.getUri().substring(1))
-                    }
-                } else {
-                    resolution = self.load(val.getUri(), parentUri, val.getOpts())
-                }
-
-                resolutions.push(resolution)
-                resolution.then(v => this.update(v))
-            }
-            if (val instanceof QueryToken) {
-                let resolution: Promise<any>
-
-                resolution = self.resolveFragment({}, val.getQuery(), parentUri)
-                resolutions.push(resolution)
-                resolution.then(v => this.update(v))
+        traverse(data).forEach(function (val) {
+            if (val instanceof Token) {
+                resolutions.push(
+                    self.resolveToken(val, reference).then(v => this.update(v))
+                )
             }
             return val
         })
 
         await Promise.all(resolutions)
 
-        return value
+        return data
     }
 
-    protected async loadUnfragmentedUri(uri: string, parentUri?: string, opts?: object): Promise<any> {
-        if (this.loaded[uri]?.value) {
-            return this.loaded[uri].value!
-        }
-
-        if (uri.startsWith('env:')) {
-            const envs = await this.proxyLoad('env:', new ProcessEnvLoader({ resolve: false, schema: this.schema }))
-
-            if (uri === 'env:') {
-                return envs
-            }
-
-            return (envs as any)[uri.substring(4)]
-        }
-
-        if (uri.startsWith('arg:')) {
-            const envs = await this.proxyLoad('arg:', new ProcessArgvLoader({ resolve: false, schema: this.schema }))
-
-            if (uri === 'arg:') {
-                return envs
-            }
-
-            return (envs as any)[uri.substring(4)]
-        }
-
-        if (uri.startsWith('http://') || uri.startsWith('https://')) {
-            return this.proxyLoad(uri, (new HttpLoader(uri, this.schema, opts)))
-        }
-
-        if (parentUri && uri.startsWith('.')) {
-            uri = resolvePath(dirname(parentUri), uri)
-        } else {
-            uri = resolvePath(process.cwd(), uri)
-        }
-
-        const stats = await stat(uri)
-
-        if (stats.isDirectory()) {
-            throw new Error('Not handled directories')
-            //return (new DirLoader(uri)).load()
-        }
-
-        return this.proxyLoad(uri, new FileLoader(this.schema, uri))
+    protected resolveToken(token: Token, reference: Reference) {
+        return token.resolve(this, reference)
     }
 }

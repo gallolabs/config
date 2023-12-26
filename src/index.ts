@@ -2,7 +2,7 @@ import { each, set, findKey, mapKeys, cloneDeep, get } from 'lodash-es'
 import fjp, {Operation} from 'fast-json-patch'
 import { EventEmitter, once } from 'events'
 import {SchemaObject, default as Ajv} from 'ajv'
-import { SourceReader, UriLoader } from './ref-resolver.js'
+import { RefResolver } from './ref-resolver.js'
 const  { compare } = fjp
 import {flatten} from 'uni-flatten'
 import { ProcessArgvLoader, ProcessEnvLoader } from './readers.js'
@@ -49,7 +49,7 @@ export interface ConfigLoaderPlugin {
 export interface ConfigLoaderOpts {
     schema: SchemaObject
     envPrefix?: string
-    watchChanges?: boolean
+    supportWatchChanges?: boolean
 }
 
 export class ConfigError extends Error {
@@ -63,22 +63,23 @@ export class ConfigError extends Error {
 
 export class ConfigLoader<Config extends Object> extends EventEmitter implements WatchChangesEventEmitter<Config> {
     protected schema: SchemaObject
-    protected watchChanges: boolean
+    protected supportWatchChanges: boolean
     protected running = false
     protected config?: Config
     protected globalLoader: GlobalLoader
-    protected uriLoader: UriLoader
+    protected refResolver: RefResolver
     protected needReload = false
     protected loading = false
 
     public constructor(opts: ConfigLoaderOpts) {
         super()
         this.schema = opts.schema
-        this.watchChanges = opts.watchChanges || false
+        this.supportWatchChanges = opts.supportWatchChanges || false
+        this.refResolver = new RefResolver({})
         this.globalLoader = new GlobalLoader({
             envPrefix: opts.envPrefix,
             schema: this.schema,
-            uriLoader: this.uriLoader = new UriLoader(this.schema, this.watchChanges)
+            refResolver: this.refResolver
         })
     }
 
@@ -92,10 +93,10 @@ export class ConfigLoader<Config extends Object> extends EventEmitter implements
         abortSignal?.addEventListener('abort', () => this.stop())
         this.running = true
 
-        this.uriLoader.on('change', () => {
+        this.refResolver.on('stale', () => {
             this.load()
         })
-        this.uriLoader.on('error', (error) => this.emit('error', error))
+        this.refResolver.on('error', (error) => this.emit('error', error))
 
         this.load()
     }
@@ -105,7 +106,7 @@ export class ConfigLoader<Config extends Object> extends EventEmitter implements
             return
         }
 
-        this.uriLoader.stopWatches()
+        this.refResolver.clear()
 
         this.running = false
     }
@@ -226,10 +227,10 @@ export class ConfigLoader<Config extends Object> extends EventEmitter implements
 
 export class GlobalLoader {
     protected loaders: Record<string, SourceReader>
-    protected uriLoader: UriLoader
+    protected refResolver: RefResolver
 
-    public constructor({envPrefix, schema, uriLoader}: {envPrefix?: string, schema: SchemaObject, uriLoader: UriLoader}) {
-        this.uriLoader = uriLoader
+    public constructor({envPrefix, schema, refResolver}: {envPrefix?: string, schema: SchemaObject, refResolver: RefResolver}) {
+        this.refResolver = refResolver
         this.loaders = {
             env: new ProcessEnvLoader({ resolve: true, prefix: envPrefix, schema }),
             arg: new ProcessArgvLoader(schema, true)
@@ -237,7 +238,7 @@ export class GlobalLoader {
     }
 
     public async load(): Promise<Object> {
-        //this.uriLoader.clearCaches()
+        this.refResolver.clear()
         const baseConfigs = await Promise.all([
             this.uriLoader.resolveTokens(await this.loaders.env.load(), 'env:'),
             this.uriLoader.resolveTokens(await this.loaders.arg.load(), 'arg:')
@@ -280,5 +281,173 @@ export class GlobalLoader {
         }
 
         return obj
+    }
+}
+
+
+export class UriLoader extends EventEmitter {
+    protected schema: SchemaObject
+    protected loaded: Record<string, {
+        loader: Reader
+        watchAbortController?: AbortController
+        value?: Promise<Object>
+    }> = {}
+    protected watchChanges: boolean
+
+    public constructor(schema: SchemaObject, watchChanges: boolean) {
+        super()
+        this.schema = schema
+        this.watchChanges = watchChanges
+    }
+
+    public async load(uri: string, parentUri?: string, opts?: object): Promise<Object> {
+        const [unfragmentedUri, ...fragments] = uri.split('#')
+
+        const data = await this.loadUnfragmentedUri(unfragmentedUri, parentUri, opts)
+
+        const fragment = fragments.join('#')
+
+        if (!fragment) {
+            return data
+        }
+
+        return this.resolveFragment(data, fragment)
+    }
+
+    public clearCaches() {
+        Object.keys(this.loaded).forEach(uri => {
+            delete this.loaded[uri].value
+        })
+    }
+
+    public stopWatches() {
+        Object.keys(this.loaded).forEach(uri => {
+            this.loaded[uri].watchAbortController?.abort()
+        })
+    }
+
+    protected async resolveFragment(data: any, fragment: string, parentUri?: string) {
+        return jsonata(fragment).evaluate(data, {
+            ref: (uri: string, opts: object) => {
+                return this.load(uri, parentUri, opts)
+            }
+        })
+    }
+
+    protected async proxyLoad(uri: string, loader: Reader): Promise<Object> {
+        if (!this.loaded[uri]) {
+            this.loaded[uri] = { loader }
+        }
+
+        if (this.watchChanges && loader.watch && !this.loaded[uri].watchAbortController) {
+            const ac = new AbortController
+            const em = loader.watch(ac.signal)
+            this.loaded[uri].watchAbortController = ac
+
+            em.on('change', () => {
+                delete this.loaded[uri]?.value
+                this.emit('change')
+            })
+            em.on('error', () => this.emit('error'))
+        }
+
+        if (!this.loaded[uri].value) {
+            this.loaded[uri].value = await loader.load() as any
+        }
+
+        return this.resolveTokens(this.loaded[uri].value!, uri)
+    }
+
+    public async resolveTokens(value: any, parentUri: string): Promise<any> {
+        if (value instanceof RefToken) {
+            return this.load(value.getUri())
+        }
+
+        if (!(value instanceof Object)) {
+            return value
+        }
+
+        value = cloneDeep(value)
+
+        const resolutions: Promise<any>[] = []
+
+        const self = this
+
+        traverse(value).forEach(function (val) {
+            if (val instanceof RefToken) {
+
+                let resolution: Promise<any>
+
+                if (val.getUri().startsWith('#')) {
+                    if (parentUri === 'env:' || parentUri === 'arg:') {
+                        resolution = self.load(parentUri + val.getUri(), undefined, val.getOpts())
+                    } else {
+                        resolution = self.resolveFragment(value, val.getUri().substring(1))
+                    }
+                } else {
+                    resolution = self.load(val.getUri(), parentUri, val.getOpts())
+                }
+
+                resolutions.push(resolution)
+                resolution.then(v => this.update(v))
+            }
+            if (val instanceof QueryToken) {
+                let resolution: Promise<any>
+
+                resolution = self.resolveFragment({}, val.getQuery(), parentUri)
+                resolutions.push(resolution)
+                resolution.then(v => this.update(v))
+            }
+            return val
+        })
+
+        await Promise.all(resolutions)
+
+        return value
+    }
+
+    protected async loadUnfragmentedUri(uri: string, parentUri?: string, opts?: object): Promise<any> {
+        if (this.loaded[uri]?.value) {
+            return this.loaded[uri].value!
+        }
+
+        if (uri.startsWith('env:')) {
+            const envs = await this.proxyLoad('env:', new ProcessEnvLoader({ resolve: false, schema: this.schema }))
+
+            if (uri === 'env:') {
+                return envs
+            }
+
+            return (envs as any)[uri.substring(4)]
+        }
+
+        if (uri.startsWith('arg:')) {
+            const envs = await this.proxyLoad('arg:', new ProcessArgvLoader({ resolve: false, schema: this.schema }))
+
+            if (uri === 'arg:') {
+                return envs
+            }
+
+            return (envs as any)[uri.substring(4)]
+        }
+
+        if (uri.startsWith('http://') || uri.startsWith('https://')) {
+            return this.proxyLoad(uri, (new HttpLoader(uri, this.schema, opts)))
+        }
+
+        if (parentUri && uri.startsWith('.')) {
+            uri = resolvePath(dirname(parentUri), uri)
+        } else {
+            uri = resolvePath(process.cwd(), uri)
+        }
+
+        const stats = await stat(uri)
+
+        if (stats.isDirectory()) {
+            throw new Error('Not handled directories')
+            //return (new DirLoader(uri)).load()
+        }
+
+        return this.proxyLoad(uri, new FileLoader(this.schema, uri))
     }
 }
