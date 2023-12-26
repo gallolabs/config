@@ -9,87 +9,36 @@ import EventEmitter from "events"
 import isBinaryPath from "is-binary-path"
 import { ContentParser, EnvParser, JsonParser, YamlParser } from "./parsers.js"
 import { flatDictToDeepObject } from "./unflat-mapper.js"
-// import { extname } from 'path'
-// @ts-ignore
-// import flat from 'flat'
-// const flattenObject = flat.flatten
-// import deepmerge from 'deepmerge'
+import { QueryToken, createIncludeTokenFromString } from "./tokens.js"
 
-export interface SourceReader {
-    load(): Promise<Object>
+
+
+export interface ReaderFactory<TReader extends Reader> {
+    canRead: (uriWithoutFragment: string) => Promise<boolean>
+    create: (uri: string, opts: object) => TReader
+}
+
+export interface Reader {
+    read(): Promise<Object>
     watch?(abortSignal: AbortSignal): EventEmitter
+    resolveUri?(uriWithoutFragment: string): string
 }
 
-export class IncludeToken {
-    uri: string
-    opts: object
+export const builtinReaderFactories:ReaderFactory<any>[] = [
+//    new ProcessArgvReaderFactory
+]
 
-    public constructor(uri: string, opts?: object) {
-        this.uri = uri
-        this.opts = opts || {}
+
+export class ProcessArgvReaderFactory implements ReaderFactory<ProcessArgvReader> {
+    public async canRead(uriWithoutFragment: string) {
+        return uriWithoutFragment.startsWith('arg:')
     }
-
-    public getUri() {
-        return this.uri
-    }
-
-    public getOpts() {
-        return this.opts
+    public create(uri: string, opts: object) {
+        return new ProcessArgvReader(null as any, false)
     }
 }
 
-export function createIncludeTokenFromString(string: string) {
-    // let uriWithoutFragmentPart: string = ''
-    // let fragmentPart: string = ''
-    // let optsPart: string = ''
-
-    // let step: 'uwfp' | 'fp' | 'op'  = 'uwfp'
-
-    // for (let letter in string) {
-    //     switch(step) {
-    //         case 'uwfp':
-    //             if (letter === '#') {
-    //                 step = 'fp'
-    //             } else if (letter === ' ') {
-    //                 step = 'op'
-    //             } else {
-    //                 uriWithoutFragmentPart+= letter
-    //             }
-    //             break
-    //         case 'fp':
-    //             if (letter === ' ' && fragmentPart.startsWith())
-    //     }
-
-    // }
-
-    const [uri, ...optsParts] = string.split(' ')
-
-    const opts = optsParts.length ? JSON.parse(optsParts.join(' ')) : {} // jsonata(optsParts.join(' ')).evaluate(null)
-    return new IncludeToken(uri, opts)
-
-}
-
-export function createIncludeTokenFromObject(obj: Record<string, any>) {
-    if (!obj.uri) {
-        throw new Error('Missing uri')
-    }
-    return new IncludeToken(obj.uri, obj.opts)
-}
-
-export class QueryToken {
-    query: string
-
-    public constructor(query: string) {
-        this.query = query
-    }
-
-    public getQuery() {
-        return this.query
-    }
-}
-
-
-export class ProcessArgvLoader implements SourceReader {
+export class ProcessArgvReader implements Reader {
     protected schema: SchemaObject
     protected resolve: boolean
 
@@ -98,7 +47,7 @@ export class ProcessArgvLoader implements SourceReader {
         this.resolve = resolve
     }
 
-    public async load(): Promise<Object> {
+    public async read(): Promise<Object> {
         const args = minimist(process.argv)
         // @ts-ignore
         delete args._
@@ -109,7 +58,8 @@ export class ProcessArgvLoader implements SourceReader {
     }
 }
 
-export class ProcessEnvLoader implements SourceReader {
+
+export class ProcessEnvReader implements Reader {
     protected prefix?: string
     protected resolve: boolean
     protected schema: SchemaObject
@@ -147,7 +97,7 @@ export class ProcessEnvLoader implements SourceReader {
 }
 
 
-export class FileLoader implements SourceReader {
+export class FileReader implements Reader {
     protected parser?: ContentParser
     protected path: string
 
@@ -218,7 +168,7 @@ export class FileLoader implements SourceReader {
 // }
 
 
-export class HttpLoader implements SourceReader {
+export class HttpReader implements Reader {
     protected url: string
     protected schema: SchemaObject
     protected opts: object

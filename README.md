@@ -3,6 +3,36 @@
   <p align="center"><strong>Gallo config</strong></p>
 </p>
 
+## Definition
+
+Global Workflow :
+
+- Event 'load' is emitted
+- Process env & argv are read to identify config* keys (CONFIG_*, --config-* uri & opts)
+- If config uri is provided, it is loaded and used as base config ; loaded uri can be watched and are cached
+- Process env is unflatten thanks to the schema and merged to the base config
+- Process argv then also
+- The candidate config is validated (and type converted) ... or not
+- If no validated, and same of any error, event 'error' is emitted
+- Event 'loaded' is emitted
+- If previous config was loaded, the new config is compared and :
+    + Event 'change' is emitted with patches, old config and new config
+    + Events 'change:xxx.xxx.xxx' are emitted with all the tree. For example if admin.identity.name is modified, are emitted :
+        * change:admin
+        * change:admin.identity
+        * change:admin.identity.name 
+
+Ref / Uri workflow :
+- It is possible to load uri, providing transformation as fragment and options
+- The $ref is called from anywhere with the format :
+    + one-line (if supported) for example env : @ref ./variables#my.variable {options}
+    + as dictionnary (if supported) for example yaml : !ref uri: ./variables#my.variable opts: {options}
+- Transformation is handled by jsonata and so advanced query/transformations are possible. However, the readability is very bad. Prefer $query for advanced use, and keep $ref with fragment to subresource query for example
+- Also is available $query for advanced uses (use multiples values, for example @query "$ref('env:BASE_URL') & $ref('arg:url-suffix')")
+- Uri are resolved with a reader to read the raw value (stored in cache, and with watcher), a parser to parse depending of the content type, and parsed token (ref, query) are resolved
+
+## Old doc
+
 Advanced config:
 - [X] from files (super-yaml, json) and envs (scoped or not)
 - [X] Validated user config (with validate component with cast and defaults values)

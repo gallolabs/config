@@ -1,5 +1,5 @@
 import { SchemaObject } from "ajv"
-import { FileLoader, HttpLoader, IncludeToken, ProcessArgvLoader, ProcessEnvLoader, QueryToken, SourceReader } from "./readers.js"
+import { Reader, ReaderFactory, builtinReaderFactories } from "./readers.js"
 import { cloneDeep } from 'lodash-es'
 import { stat } from "fs/promises"
 import jsonata from 'jsonata'
@@ -7,14 +7,74 @@ import EventEmitter from "events"
 import traverse from "traverse"
 import { dirname, resolve as resolvePath } from 'path'
 
-export class RefResolver {
-
+export interface RefResolingOpts {
+    // including readers & parsers options
 }
+
+export class RefResolver {
+    protected readerFactories = builtinReaderFactories
+
+    public constructor(
+        {additionalReaderFactories}:
+        {additionalReaderFactories?: ReaderFactory<any>[]}
+    ) {
+        if (additionalReaderFactories) {
+            this.readerFactories = [...additionalReaderFactories, ...this.readerFactories]
+        }
+    }
+
+    public async resolve(uri: string, opts: RefResolingOpts, parentReader?: Reader): Promise<any> {
+        let [unfragmentedUri, ...fragments] = uri.split('#')
+        const fragment = fragments.join('#')
+
+        // parentReader is http://x/a.json and called ./b.json, calling
+        // Reader a.json to resolve ./b.json as http://x/b.json
+        if (parentReader && parentReader.resolveUri) {
+            unfragmentedUri = parentReader.resolveUri(unfragmentedUri)
+        }
+
+        if (!parentReader && !unfragmentedUri) {
+            throw new Error('Unable to transform no ressource')
+        }
+
+        const reader = unfragmentedUri
+            ? await this.getReaderFor(unfragmentedUri, opts)
+            : parentReader
+
+        const data = await reader!.read()
+
+        if (!fragment) {
+            return data
+        }
+
+        return this.applyTransformation(data, fragment, reader!)
+    }
+
+    protected async getReaderFor(unfragmentedUri: string, opts: RefResolingOpts): Promise<Reader> {
+        for (const readerFactory of this.readerFactories) {
+            if (await readerFactory.canRead(unfragmentedUri)) {
+                return readerFactory.create(unfragmentedUri, opts)
+            }
+        }
+
+        throw new Error('Unable to find reader for ' + unfragmentedUri)
+    }
+
+    protected applyTransformation(data: any, fragment: string, reader: Reader): Promise<any> {
+        return jsonata(fragment).evaluate(data, {
+            ref: (uri: string, opts?: RefResolingOpts) => {
+                return this.resolve(uri, opts || {}, reader)
+            }
+        })
+    }
+}
+
+
 
 export class UriLoader extends EventEmitter {
     protected schema: SchemaObject
     protected loaded: Record<string, {
-        loader: SourceReader
+        loader: Reader
         watchAbortController?: AbortController
         value?: Promise<Object>
     }> = {}
@@ -60,7 +120,7 @@ export class UriLoader extends EventEmitter {
         })
     }
 
-    protected async proxyLoad(uri: string, loader: SourceReader): Promise<Object> {
+    protected async proxyLoad(uri: string, loader: Reader): Promise<Object> {
         if (!this.loaded[uri]) {
             this.loaded[uri] = { loader }
         }
@@ -85,7 +145,7 @@ export class UriLoader extends EventEmitter {
     }
 
     public async resolveTokens(value: any, parentUri: string): Promise<any> {
-        if (value instanceof IncludeToken) {
+        if (value instanceof RefToken) {
             return this.load(value.getUri())
         }
 
@@ -100,7 +160,7 @@ export class UriLoader extends EventEmitter {
         const self = this
 
         traverse(value).forEach(function (val) {
-            if (val instanceof IncludeToken) {
+            if (val instanceof RefToken) {
 
                 let resolution: Promise<any>
 

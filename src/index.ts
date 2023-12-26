@@ -2,10 +2,10 @@ import { each, set, findKey, mapKeys, cloneDeep, get } from 'lodash-es'
 import fjp, {Operation} from 'fast-json-patch'
 import { EventEmitter, once } from 'events'
 import {SchemaObject, default as Ajv} from 'ajv'
-import { UriLoader } from './ref-resolver.js'
+import { SourceReader, UriLoader } from './ref-resolver.js'
 const  { compare } = fjp
 import {flatten} from 'uni-flatten'
-import { ProcessArgvLoader, ProcessEnvLoader, SourceReader } from './readers.js'
+import { ProcessArgvLoader, ProcessEnvLoader } from './readers.js'
 
 // adapted from https://github.com/sindresorhus/execa/blob/main/lib/promise.js
 const nativePromisePrototype = (async () => {})().constructor.prototype;
