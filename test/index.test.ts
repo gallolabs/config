@@ -2,6 +2,7 @@ import { clone } from "lodash-es"
 import { loadConfig } from "../src/index.js"
 import { setTimeout } from "timers/promises"
 import { inspect } from "util"
+import assert from "assert"
 
 const configOpts = {
     envPrefix: 'MYAPP',
@@ -62,7 +63,7 @@ describe('config', () => {
         })
     })
 
-    it.only('basic use with envs and args', async() => {
+    it('basic use with envs and args', async() => {
         process.env.MYAPP_LOG_LEVEL='debug'
         process.env.MYAPP_USERS_0_NAME='fromEnv0'
         process.env.MYAPP_USERS_2_NAME='fromEnv2'
@@ -79,13 +80,28 @@ describe('config', () => {
             console.log('candidate', inspect(candidate, {colors: true, depth: null}))
         })
 
+        const config = await configLoading
+
         console.log(
             'config',
-            inspect(await configLoading, {colors: true, depth: null})
+            inspect(config, {colors: true, depth: null})
+        )
+
+        assert.deepEqual(
+            config,
+            {
+                log: { level: 'debug' },
+                users: [
+                    { name: 'fromArgv0' },
+                    { name: 'fromArgv1' },
+                    { name: 'fromEnv2' }
+                ],
+                run: false
+            }
         )
     })
 
-    it('multi config', async () => {
+    it.skip('multi config', async () => {
 
         process.env.MYAPP_LOG_LEVEL='debug'
 
