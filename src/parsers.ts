@@ -48,7 +48,6 @@ export class EnvParser implements Parser {
         } else {
             throw new Error('Unsupport content variable type : ' + typeof content)
         }
-
         const tokenizedContentAsObject = mapValues(contentAsObject, (v) => createTokensIfPresentFromString(v, '@'))
 
         return opts.unflat
@@ -141,7 +140,7 @@ const customTags: YAML.Tags = [
 
 export class YamlParser implements Parser {
     public canParse(contentType: string): boolean {
-        return contentType.split(';')[0] === 'application/yaml'
+        return ['application/yaml', 'text/yaml'].includes(contentType.split(';')[0])
     }
     public async parse(content: unknown): Promise<Object> {
         if (!(content instanceof Buffer || typeof content === 'string')) {

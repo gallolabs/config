@@ -3,49 +3,42 @@ import { loadConfig } from "../src/index.js"
 import { setTimeout } from "timers/promises"
 import { inspect } from "util"
 import assert from "assert"
+import { tsToJsSchema } from "@gallolabs/typescript-transform-to-json-schema"
+
+interface MyAppConfig {
+    log?: {
+        level?: string
+    }
+    run: boolean
+    users?: Array<{
+        name: string
+    }>
+    api?: {
+        url: string
+        password?: string
+    }
+}
 
 const configOpts = {
     envPrefix: 'MYAPP',
-    schema: {
-        type: 'object',
-        properties: {
-            run: {type: 'boolean'},
-            log: {
-                type: 'object',
-                properties: {
-                    level: {type: 'string'},
-                    file: {type: 'string'}
-                }
-            },
-            users: {
-                type: 'array',
-                items: {
-                    type: 'object',
-                    properties: {
-                        id: {type: 'integer'},
-                        name: {type: 'string'}
-                    }
-                }
-            },
-            mappings: {
-                type: 'object',
-                additionalProperties: {
-                    type: 'object',
-                    properties: {
-                        resolver: {type: 'string'}
-                    }
-                }
-            },
-            userId: {type: 'integer'},
-            api1Url: {type: 'string'},
-            api2Url: {type: 'string'},
-            api3Url: {type: 'string'},
-            api4Url: {type: 'string'},
-            apiId: {type: 'integer'},
-            password: {type: 'string'},
-            logo: {type: 'string'}
-        }
-    }
+    schema: tsToJsSchema<MyAppConfig>()
+}
+
+async function loadTestConfig() {
+    const configLoading = loadConfig({...configOpts})
+
+    configLoading.on('candidate-loaded', (candidate) => {
+        console.log('candidate', inspect(candidate, {colors: true, depth: null}))
+    })
+
+    const config = await configLoading
+
+    console.log(
+        'config',
+        inspect(config, {colors: true, depth: null})
+    )
+
+    return config
 }
 
 describe('config', () => {
@@ -74,18 +67,7 @@ describe('config', () => {
         process.env.MYAPP_NO_IN_CONFIG_ENV='that'
         process.argv.push('--no-in-config-arg=that')
 
-        const configLoading = loadConfig({...configOpts})
-
-        configLoading.on('candidate-loaded', (candidate) => {
-            console.log('candidate', inspect(candidate, {colors: true, depth: null}))
-        })
-
-        const config = await configLoading
-
-        console.log(
-            'config',
-            inspect(config, {colors: true, depth: null})
-        )
+        const config = await loadTestConfig()
 
         assert.deepEqual(
             config,
@@ -95,6 +77,94 @@ describe('config', () => {
                     { name: 'fromArgv0' },
                     { name: 'fromArgv1' },
                     { name: 'fromEnv2' }
+                ],
+                run: false
+            }
+        )
+    })
+
+    it('use of ref from env to arg', async() => {
+        process.argv.push('--no-run')
+        process.env.MYAPP_USERS_0_NAME='@ref arg:#user-name'
+
+        process.argv.push('--user-name=argName')
+
+        const config = await loadTestConfig()
+
+        assert.deepEqual(
+            config,
+            {
+                users: [
+                    { name: 'argName' }
+                ],
+                run: false
+            }
+        )
+    })
+
+    it('use file as value from env', async() => {
+        process.env.MYAPP_RUN='false'
+        process.env.MYAPP_USERS='@ref file:///'+process.cwd()+'/test/config.test.json#users'
+
+        const config = await loadTestConfig()
+
+        assert.deepEqual(
+            config,
+            {
+                users: [
+                    { name: 'Boloss' }
+                ],
+                run: false
+            }
+        )
+    })
+
+    it('load config from file', async() => {
+        process.env.MYAPP_RUN='false'
+
+        process.env.MYAPP_CONFIG='@ref file:///'+process.cwd()+'/test/lightconfig.test.yml'
+
+        process.env.MYAPP_USERS_0_NAME='envName'
+
+        await loadTestConfig()
+
+        const config = await loadTestConfig()
+
+        assert.deepEqual(
+            config,
+            {
+                users: [
+                    { name: 'envName' },
+                    { name: 'fromYaml2' }
+                ],
+                api: { url: 'http://localhost', password: 'myVerySecretPassword' },
+                run: false
+            }
+        )
+    })
+
+    it.skip('Use ref from env to env', async() => {
+        process.env.MYAPP_RUN='false'
+        process.env.API_BASE_URL='http://myapi.com'
+        process.env.MYAPP_API_URL='@ref #API_BASE_URL'
+        //process.env.MYAPP_API_URL='@ref API_BASE_URL'
+
+        await loadTestConfig()
+    })
+
+    it('use of ref from arg to env', async() => {
+        process.argv.push('--no-run')
+        process.env.USER_NAME='envName'
+
+        process.argv.push('--users-0-name=@ref env:#USER_NAME')
+
+        const config = await loadTestConfig()
+
+        assert.deepEqual(
+            config,
+            {
+                users: [
+                    { name: 'envName' }
                 ],
                 run: false
             }

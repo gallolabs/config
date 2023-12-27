@@ -1,4 +1,5 @@
-import { RefResolver, Reference } from "./ref-resolver.js"
+import jsonata from "jsonata"
+import { RefResolver, RefResolvingOpts, Reference } from "./ref-resolver.js"
 
 export abstract class Token {
     abstract resolve(refResolver: RefResolver, reference: Reference): Promise<any>
@@ -28,7 +29,11 @@ export class QueryToken extends Token {
     }
 
     public async resolve(refResolver: RefResolver, reference: Reference) {
-        return refResolver.resolve('#' + this.query, reference.opts, reference)
+        return jsonata(this.query).evaluate({}, {
+            ref: (uri: string, opts?: RefResolvingOpts) => {
+                return refResolver.resolve(uri, opts || {}, reference)
+            }
+        })
     }
 }
 

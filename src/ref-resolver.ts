@@ -1,6 +1,5 @@
 import { Reader, HttpReader, FileReader, ProcessArgvReader, ProcessEnvReader } from "./readers.js"
-import { cloneDeep, isEqual } from 'lodash-es'
-import jsonata from 'jsonata'
+import { cloneDeep, get, isEqual } from 'lodash-es'
 import traverse from "traverse"
 import { ArgvParser, EnvParser, IniParser, JsonParser, Parser, TextParser, TomlParser, XmlParser, YamlParser } from "./parsers.js"
 import { Token } from "./tokens.js"
@@ -21,6 +20,7 @@ export interface Reference {
     reader: Reader
     abortController: AbortController
     data: Promise<any>
+    parent?: Reference
 }
 
 export class RefResolver extends EventEmitter{
@@ -67,6 +67,7 @@ export class RefResolver extends EventEmitter{
     }
 
     public async resolve(uri: string, opts: RefResolvingOpts = {}, parentReference?: Reference): Promise<any> {
+
         const [uriWithoutFragment, ...fragments] = uri.split('#')
         const fragment = fragments.join('#')
 
@@ -75,9 +76,13 @@ export class RefResolver extends EventEmitter{
         // parentReader is http://x/a.json and called ./b.json, calling
         // Reader a.json to resolve ./b.json as http://x/b.json
         const absoluteUriWithoutFragment =
-            uriWithoutFragmentHasScheme && parentReference && parentReference.reader.resolveUri
+            !uriWithoutFragmentHasScheme && parentReference
             ? parentReference.reader.resolveUri(uriWithoutFragment, parentReference.uriWithoutFragment)
             : uriWithoutFragment
+
+        if (parentReference && parentReference.parent && absoluteUriWithoutFragment === parentReference.parent.uriWithoutFragment) {
+            throw new Error('Circular reference on ' + absoluteUriWithoutFragment + ' and ' + parentReference.uriWithoutFragment)
+        }
 
         if (!parentReference && !absoluteUriWithoutFragment) {
             throw new Error('Unable to transform no ressource')
@@ -109,7 +114,8 @@ export class RefResolver extends EventEmitter{
                     abortController,
                     opts,
                     reader,
-                    data: Promise.resolve()
+                    data: Promise.resolve(),
+                    parent: parentReference
                 }
 
                 reference.data = (async() => {
@@ -137,15 +143,19 @@ export class RefResolver extends EventEmitter{
             }
         }
 
+        const data = await reference.data
+
         if (!fragment) {
-            return reference.data
+            return data
         }
 
-        return jsonata(fragment).evaluate(reference.data, {
-            ref: (uri: string, opts?: RefResolvingOpts) => {
-                return this.resolve(uri, opts || {}, reference)
-            }
-        })
+        const subRessource = get(data, fragment)
+
+        if (subRessource === undefined) {
+           throw new Error('subRessource not found : ' + fragment + ' on ' + absoluteUriWithoutFragment)
+        }
+
+        return subRessource
     }
 
     protected async resolveTokens(data: any, reference: Reference) {

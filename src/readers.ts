@@ -26,7 +26,7 @@ export interface ReaderOpts {
 export interface Reader {
     canRead(uriWithoutFragment: string): boolean
     read(uriWithoutFragment: string, opts: ReaderOpts, abortSignal: AbortSignal): Promise<ReadContent>
-    resolveUri?(uriWithoutFragment: string, parentUriWithoutFragment: string): string
+    resolveUri(uriWithoutFragment: string, parentUriWithoutFragment: string): string
 }
 
 export class ReadContent extends EventEmitter implements ReadContent {
@@ -96,7 +96,7 @@ export class HttpReader implements Reader {
 
 export class FileReader implements Reader {
     public canRead(uriWithoutFragment: string): boolean {
-        return uriWithoutFragment.startsWith('file:///') // Only localhost
+        return uriWithoutFragment.startsWith('file://')
     }
 
     public resolveUri(uriWithoutFragment: string, parentUriWithoutFragment: string): string {
@@ -104,16 +104,25 @@ export class FileReader implements Reader {
     }
 
     async read(uriWithoutFragment: string, opts: ReaderOpts, abortSignal: AbortSignal): Promise<ReadContent> {
-        uriWithoutFragment = uriWithoutFragment.substring(7) // remove 'file://'
-        const content = await readFile(uriWithoutFragment)
-        const contentType = mime.getType(extname(uriWithoutFragment).substring(1)) || 'text/plain'
+        // if (!uriWithoutFragment.startsWith('file:/')) {
+        //     uriWithoutFragment = uriWithoutFragment.replace('file:', 'file://' + process.cwd() + '/')
+        // }
+        const fileUrl = new URL(uriWithoutFragment)
+        const path = fileUrl.pathname
+
+        if (fileUrl.hostname && fileUrl.hostname !== 'localhost') {
+            throw new Error('Unhandled hostname')
+        }
+
+        const content = await readFile(path)
+        const contentType = mime.getType(extname(path).substring(1)) || 'text/plain'
 
         const rc = new ReadContent(contentType, content)
 
         // It is too late here because file can have been modified before watch start
         if (opts.watch) {
             const watcher = chokidar
-                .watch(uriWithoutFragment)
+                .watch(path)
                 .on('all', async(type) => {
                     if (type === 'add') {
                         return
@@ -134,6 +143,10 @@ export class FileReader implements Reader {
 export class ProcessArgvReader implements Reader {
     public canRead(uriWithoutFragment: string) {
         return uriWithoutFragment.startsWith('arg:')
+    }
+
+    public resolveUri(_uriWithoutFragment: string, parentUriWithoutFragment: string): string {
+        return parentUriWithoutFragment
     }
 
     async read(uriWithoutFragment: string): Promise<ReadContent> {
@@ -158,6 +171,10 @@ export class ProcessArgvReader implements Reader {
 export class ProcessEnvReader implements Reader {
     public canRead(uriWithoutFragment: string) {
         return uriWithoutFragment.startsWith('env:')
+    }
+
+    public resolveUri(_uriWithoutFragment: string, parentUriWithoutFragment: string): string {
+        return parentUriWithoutFragment
     }
 
     async read(uriWithoutFragment: string): Promise<ReadContent> {

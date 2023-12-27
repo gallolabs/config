@@ -1,0 +1,7 @@
+users:
+  - name: fromYaml1
+  - name: fromYaml2
+
+api:
+  url: 'http://localhost'
+  password: !ref ./password
