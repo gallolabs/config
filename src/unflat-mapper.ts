@@ -1,13 +1,36 @@
 import { SchemaObject } from "ajv"
-import { each, get, omit, set } from "lodash-es"
+import { chain, each, get, omit, set } from "lodash-es"
 import traverse from "traverse"
 
-export function flatDictToDeepObject({data, delimiter, schema}: {data: Record<string, any>, delimiter: string, schema: SchemaObject}) {
+export function flatDictToDeepObject(
+    {data, delimiter, schema, prefix, schemaSubPath}:
+    {data: Record<string, any>, delimiter: string, schema: SchemaObject, prefix?: string, schemaSubPath?: string}
+) {
+    const fullPrefix = prefix
+        ? prefix.toLowerCase() + (prefix.endsWith(delimiter) ? '' : delimiter)
+        : null
+
+    if (fullPrefix) {
+        data = chain(data)
+            .pickBy((_, key) => key.toLowerCase().startsWith(fullPrefix))
+            .mapKeys((_, key) => key.substring(fullPrefix.length))
+            .value()
+    }
+
     const obj = {}
     schema = unrefSchema(schema)
 
+    // See https://npm.runkit.com/json-schema-library getSchema with pointer
+    // if (schemaSubPath) {
+    //     schema = resolveSubSchema(schema, schemaSubPath)
+    // }
+
+    if (schemaSubPath) {
+        schemaSubPath = schemaSubPath.split('.').join(delimiter)
+    }
+
     each(data, (value, key) => {
-        const path = resolveFlatPath(key, delimiter, schema)
+        const path = resolveFlatPath(schemaSubPath ? schemaSubPath + delimiter + key : key, delimiter, schema)
         set(obj, path, value)
     })
 
@@ -42,7 +65,7 @@ function resolveFlatPath(path: string, delimiter: string, schema: any): string {
         return index + (resolvedNext ? '.' + resolvedNext : '')
     }
 
-    return path.split(delimiter).join('.')
+    return path.toLowerCase().split(delimiter).join('.')
 }
 
 function unrefSchema(schema: Object) {

@@ -1,20 +1,21 @@
-import { Reader, HttpReader } from "./readers.js"
+import { Reader, HttpReader, FileReader, ProcessArgvReader, ProcessEnvReader } from "./readers.js"
 import { cloneDeep, isEqual } from 'lodash-es'
 import jsonata from 'jsonata'
 import traverse from "traverse"
-import { Parser } from "./parsers.js"
+import { ArgvParser, EnvParser, IniParser, JsonParser, Parser, TomlParser, XmlParser, YamlParser } from "./parsers.js"
 import { Token } from "./tokens.js"
 import EventEmitter from "events"
 
-export interface RefResolingOpts {
+export interface RefResolvingOpts {
     // including readers & parsers options
     watch?: boolean
+    contentType?: string
     [k: string]: any
 }
 
 export interface Reference {
     uriWithoutFragment: string
-    opts: RefResolingOpts
+    opts: RefResolvingOpts
     reader: Reader
     abortController: AbortController
     data: Promise<any>
@@ -22,20 +23,34 @@ export interface Reference {
 
 export class RefResolver extends EventEmitter{
     protected readers: Reader[] = [
-        new HttpReader
+        new HttpReader,
+        new FileReader,
+        new ProcessArgvReader,
+        new ProcessEnvReader
     ]
 
-    protected parsers: Parser[] = []
+    protected parsers: Parser[] = [
+        new ArgvParser,
+        new EnvParser,
+        new JsonParser,
+        new IniParser,
+        new TomlParser,
+        new YamlParser,
+        new XmlParser
+    ]
 
     protected references: Reference[] = []
 
     public constructor(
-        {additionalReaders}:
-        {additionalReaders?: Reader[]}
+        {additionalReaders, additionalParsers}:
+        {additionalReaders?: Reader[], additionalParsers: Parser[]}
     ) {
         super()
         if (additionalReaders) {
             this.readers = [...this.readers, ...additionalReaders]
+        }
+        if (additionalParsers) {
+            this.parsers = [...this.parsers, ...additionalParsers]
         }
     }
 
@@ -45,7 +60,7 @@ export class RefResolver extends EventEmitter{
         this.references = []
     }
 
-    public async resolve(uri: string, opts: RefResolingOpts, parentReference?: Reference): Promise<any> {
+    public async resolve(uri: string, opts: RefResolvingOpts, parentReference?: Reference): Promise<any> {
         const [uriWithoutFragment, ...fragments] = uri.split('#')
         const fragment = fragments.join('#')
 
@@ -118,7 +133,7 @@ export class RefResolver extends EventEmitter{
         }
 
         return jsonata(fragment).evaluate(reference.data, {
-            ref: (uri: string, opts?: RefResolingOpts) => {
+            ref: (uri: string, opts?: RefResolvingOpts) => {
                 return this.resolve(uri, opts || {}, reference)
             }
         })

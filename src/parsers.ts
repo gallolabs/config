@@ -1,44 +1,80 @@
-import { SchemaObject } from "ajv"
 import parseEnvString from "parse-env-string"
-import { RefToken, QueryToken } from "./tokens.js"
+import { RefToken, QueryToken, createTokensIfPresentFromString } from "./tokens.js"
 import YAML from 'yaml'
-import { flatDictToDeepObject } from "./unflat-mapper.js"
 import { parse as parseIni } from 'ini'
 import toml from 'toml'
 import stripJsonComments from 'strip-json-comments'
+import minimist from "minimist"
+import { mapValues } from "lodash-es"
+import traverse from "traverse"
+import stringArgv from 'string-argv'
+
+export interface ParserOpts {
+    [k: string]: any
+}
 
 export interface Parser {
     canParse(contentType: string): boolean
-    parse: (content: any, opts: any) => Promise<any>
+    parse: (content: any, opts: ParserOpts) => Promise<any>
 }
 
+export class EnvParser implements Parser {
+    public canParse(contentType: string): boolean {
+        return contentType.split(';')[0] === 'application/x.env'
+    }
+    public async parse(content: string, opts: ParserOpts & { unflat?: boolean }): Promise<Object> {
+        const env = parseEnvString(content.replace(/^\s*#.*/gm, '').replace(/\n/g, ' '))
 
-export class ArgsParser implements ContentParser {
-    public async parse(_content: string): Promise<Object> {
-        throw new Error('Todo')
+        return mapValues(env, (v) => createTokensIfPresentFromString(v, '@'))
     }
 }
 
-export class JsonParser implements ContentParser {
+export class ArgvParser implements Parser {
+    public canParse(contentType: string): boolean {
+        return contentType.split(';')[0] === 'application/x.argv'
+    }
     public async parse(content: string): Promise<Object> {
-        return JSON.parse(stripJsonComments(content))
+        const args = minimist(stringArgv(content))
+        // @ts-ignore
+        delete args._
+
+        return mapValues(args, (v) => {
+            if (typeof v === 'string') {
+                return createTokensIfPresentFromString(v, '@')
+            }
+            return v
+        })
     }
 }
 
-export class IniParser implements ContentParser {
+export class JsonParser implements Parser {
+    public canParse(contentType: string): boolean {
+        return contentType.split(';')[0] === 'application/json'
+    }
     public async parse(content: string): Promise<Object> {
-        return parseIni(content)
+        const obj = JSON.parse(stripJsonComments(content))
+
+        traverse(obj).forEach(function (val) {
+            if (val instanceof Object) {
+                if (val.$query) {
+                    return new QueryToken(val.$query)
+                }
+                if (val.$ref) {
+                    return new RefToken(val.$ref, val.$opts || {})
+                }
+            }
+
+            return val
+        })
+
+        return obj
     }
 }
 
-export class TomlParser implements ContentParser {
-    public async parse(content: string): Promise<Object> {
-        return toml.parse(content)
+export class YamlParser implements Parser {
+    public canParse(contentType: string): boolean {
+        return contentType.split(';')[0] === 'application/yaml'
     }
-}
-
-
-export class YamlParser implements ContentParser {
     public async parse(content: string): Promise<Object> {
         const customTags: YAML.Tags = [
             {
@@ -78,40 +114,29 @@ export class YamlParser implements ContentParser {
     }
 }
 
-export class EnvParser implements ContentParser {
-    protected schema: SchemaObject
-
-    public constructor(schema: SchemaObject) {
-        this.schema = schema
+export class IniParser implements Parser {
+    public canParse(contentType: string): boolean {
+        return contentType.split(';')[0] === 'application/x.ini'
     }
-
     public async parse(content: string): Promise<Object> {
-        const env = parseEnvString(content.replace(/^\s*#.*/gm, '').replace(/\n/g, ' '))
-
-        return flatDictToDeepObject({data: env, delimiter: '_', schema: this.schema})
+        return parseIni(content)
     }
 }
 
-        // Todo move to globalLoader
-        const fullPrefix = this.prefix
-            ? this.prefix.toLowerCase() + (this.prefix.endsWith('_') ? '' : '_')
-            : null
-
-        const env: Record<string, any> = fullPrefix
-            ? chain(process.env)
-                .pickBy((_, key) => key.toLowerCase().startsWith(fullPrefix))
-                .mapKeys((_, key) => key.substring(fullPrefix.length))
-                .value()
-            : process.env
-// Todo move to parser
-        for (const key in env) {
-            if(typeof env[key] === 'string' && (env[key] as string).startsWith('@ref')) {
-                env[key] = createIncludeTokenFromString((env[key] as string).split(' ').slice(1).join(' '))
-            }
-            if(typeof env[key] === 'string' && (env[key] as string).startsWith('@query')) {
-                env[key] = new QueryToken((env[key] as string).split(' ').slice(1).join(' '))
-            }
-        }
-        // Todo move to globalLoader
-        return this.resolve ? flatDictToDeepObject({data: env, delimiter: '_', schema: this.schema}) : env
+export class TomlParser implements Parser {
+    public canParse(contentType: string): boolean {
+        return contentType.split(';')[0] === 'application/toml'
     }
+    public async parse(content: string): Promise<Object> {
+        return toml.parse(content)
+    }
+}
+
+export class XmlParser implements Parser {
+    public canParse(contentType: string): boolean {
+        return contentType.split(';')[0] === 'application/xml'
+    }
+    public async parse(): Promise<Object> {
+        throw new Error('todo')
+    }
+}

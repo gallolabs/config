@@ -1,14 +1,20 @@
 import { readFile /*, readdir*/ } from "fs/promises"
-import {chain} from 'lodash-es'
-import {type SchemaObject} from 'ajv'
 import minimist from 'minimist'
 import got from 'got'
 import { extname } from "path"
 import chokidar from 'chokidar'
 import EventEmitter from "events"
-import { flatDictToDeepObject } from "./unflat-mapper.js"
-import { QueryToken, createIncludeTokenFromString } from "./tokens.js"
-import mime from "mime"
+import { Mime } from "mime"
+// @ts-ignore
+import standardMime from 'types/standard.js'
+// @ts-ignore
+import othersMime from 'types/others.js'
+
+const mime = new Mime(standardMime, othersMime, {
+    'application/x.argv': ['argv'],
+    'application/x.env': ['env'],
+    'application/x.ini': ['ini']
+})
 
 export interface ReaderOpts {
     watch?: boolean
@@ -96,8 +102,9 @@ export class FileReader implements Reader {
     }
 
     async read(uriWithoutFragment: string, opts: ReaderOpts, abortSignal: AbortSignal): Promise<ReadContent> {
+        uriWithoutFragment = uriWithoutFragment.substring(7) // remove 'file://'
         const content = await readFile(uriWithoutFragment)
-        const contentType = mime.getType(extname(uriWithoutFragment)) || 'text/plain'
+        const contentType = mime.getType(extname(uriWithoutFragment).substring(1)) || 'text/plain'
 
         const rc = new ReadContent(contentType, content)
 
@@ -135,7 +142,7 @@ export class ProcessArgvReader implements Reader {
         const path = uriWithoutFragment.substring(4)
 
         if (!path) {
-            return new ReadContent('flat-object', args)
+            return new ReadContent('application/x.argv', args)
         }
 
         if (args[path] === undefined) {
@@ -158,7 +165,7 @@ export class ProcessEnvReader implements Reader {
         const path = uriWithoutFragment.substring(4)
 
         if (!path) {
-            return new ReadContent('flat-object', env)
+            return new ReadContent('application/x.env', env)
         }
 
         if (env[path] === undefined) {
