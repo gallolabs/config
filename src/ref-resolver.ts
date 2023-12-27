@@ -1,7 +1,7 @@
 import { Reader, HttpReader, FileReader, ProcessArgvReader, ProcessEnvReader } from "./readers.js"
 import { cloneDeep, get, isEqual } from 'lodash-es'
 import traverse from "traverse"
-import { ArgvParser, EnvParser, IniParser, JsonParser, Parser, TextParser, TomlParser, XmlParser, YamlParser } from "./parsers.js"
+import { ArgvParser, BinaryParser, EnvParser, IniParser, JsonParser, Parser, TextParser, TomlParser, XmlParser, YamlParser } from "./parsers.js"
 import { Token } from "./tokens.js"
 import EventEmitter from "events"
 import { SchemaObject } from "ajv"
@@ -39,7 +39,8 @@ export class RefResolver extends EventEmitter{
         new TomlParser,
         new YamlParser,
         new XmlParser,
-        new TextParser
+        new TextParser,
+        new BinaryParser
     ]
 
     protected references: Reference[] = []
@@ -134,7 +135,7 @@ export class RefResolver extends EventEmitter{
                     if (!parser) {
                         throw new Error('Unable to find parser for ' + contentType + ' on ' + absoluteUriWithoutFragment)
                     }
-                    const parsedData = await parser.parse(rawData.getContent(), opts)
+                    const parsedData = await parser.parse(rawData.getContent(), opts, contentType)
 
                     return await this.resolveTokens(parsedData, reference)
                 })()

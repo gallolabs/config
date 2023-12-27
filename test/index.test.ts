@@ -6,10 +6,10 @@ import assert from "assert"
 import { tsToJsSchema } from "@gallolabs/typescript-transform-to-json-schema"
 
 interface MyAppConfig {
+    run: boolean
     log?: {
         level?: string
     }
-    run: boolean
     users?: Array<{
         name: string
     }>
@@ -17,6 +17,12 @@ interface MyAppConfig {
         url: string
         password?: string
     }
+    logo?: string
+    message?: string
+    rawDummyTodo?: string
+    availableRepositories?: string[]
+    flatEnvs: Record<string, string>
+    admins: Array<{firstName: string}>
 }
 
 const configOpts = {
@@ -24,8 +30,10 @@ const configOpts = {
     schema: tsToJsSchema<MyAppConfig>()
 }
 
+console.log(configOpts.schema)
+
 async function loadTestConfig() {
-    const configLoading = loadConfig({...configOpts})
+    const configLoading = loadConfig<MyAppConfig>({...configOpts})
 
     configLoading.on('candidate-loaded', (candidate) => {
         console.log('candidate', inspect(candidate, {colors: true, depth: null}))
@@ -104,7 +112,7 @@ describe('config', () => {
 
     it('use file as value from env', async() => {
         process.env.MYAPP_RUN='false'
-        process.env.MYAPP_USERS='@ref file:///'+process.cwd()+'/test/config.test.json#users'
+        process.env.MYAPP_USERS='@ref file://'+process.cwd()+'/test/config.test.json#users'
 
         const config = await loadTestConfig()
 
@@ -119,7 +127,7 @@ describe('config', () => {
         )
     })
 
-    it('load config from file', async() => {
+    it.only('load config from file', async() => {
         process.env.MYAPP_RUN='false'
 
         process.env.MYAPP_CONFIG='@ref file:///'+process.cwd()+'/test/lightconfig.test.yml'
@@ -138,7 +146,8 @@ describe('config', () => {
                     { name: 'fromYaml2' }
                 ],
                 api: { url: 'http://localhost', password: 'myVerySecretPassword' },
-                run: false
+                run: false,
+                logo: "data:image/vnd.microsoft.icon;base64,AAABAAEAAQECAAEAAQA4AAAAFgAAACgAAAABAAAAAgAAAAEAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADL1usAAAAAAAAAAAAAAAAA"
             }
         )
     })

@@ -18,7 +18,21 @@ export interface ParserOpts {
 
 export interface Parser {
     canParse(contentType: string): boolean
-    parse: (content: unknown, opts: ParserOpts) => Promise<any>
+    parse: (content: unknown, opts: ParserOpts, contentType: string) => Promise<any>
+}
+
+export class BinaryParser implements Parser {
+    public canParse(contentType: string): boolean {
+        return !contentType.startsWith('text/')
+            && !contentType.startsWith('application/')
+    }
+    public async parse(content: unknown, _: ParserOpts, contentType: string): Promise<Object> {
+        if (!(content instanceof Buffer)) {
+            throw new Error('Unsupport content variable type : ' + typeof content)
+        }
+
+        return 'data:'+contentType+';base64,' + content.toString('base64')
+    }
 }
 
 export class TextParser implements Parser {

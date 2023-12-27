@@ -5,6 +5,8 @@ import {SchemaObject, default as Ajv} from 'ajv'
 import { RefResolver } from './ref-resolver.js'
 const  { compare } = fjp
 import {flatten} from 'uni-flatten'
+//import addFormats from "ajv-formats"
+//import ajvKeywords from 'ajv-keywords'
 
 // adapted from https://github.com/sindresorhus/execa/blob/main/lib/promise.js
 const nativePromisePrototype = (async () => {})().constructor.prototype;
@@ -33,7 +35,7 @@ export interface WatchChangesEventEmitter<Config> extends EventEmitter {
     on(event: string, listener: (arg: {value: unknown, previousValue: unknown, config: Config, previousConfig: Config}) => void): this
 }
 
-export function loadConfig<Config extends Object>(opts: ConfigLoaderOpts & {abortSignal?: AbortSignal}): ConfigLoader<Config> & Promise<any> {
+export function loadConfig<Config extends Object>(opts: ConfigLoaderOpts & {abortSignal?: AbortSignal}): ConfigLoader<Config> & Promise<Config> {
     const loader = new ConfigLoader<Config>(opts)
 
     loader.start(opts.abortSignal)
@@ -242,8 +244,13 @@ export class ConfigLoader<Config extends Object> extends EventEmitter implements
             coerceTypes: true,
             removeAdditional: true,
             useDefaults: true,
-            strict: true
+            strict: true,
+            parseDate: true,
+            allowDate: true
         })
+
+        //addFormats.default(ajv)
+        // ajvKeywords.default(ajv)
 
         if (!ajv.validate(schema, candidateConfig)) {
             const firstError = ajv.errors![0]

@@ -5,3 +5,23 @@ users:
 api:
   url: 'http://localhost'
   password: !ref ./password
+
+logo: !ref ./binary.test.ico
+
+message: !ref https://dummyjson.com/todos/2#todo
+
+rawDummyTodo: !ref
+  uri: https://dummyjson.com/todos/2
+  opts:
+    contentType: text/plain
+
+availableRepositories: !query $ref('./config.test.ini').repositories ~> $keys()
+
+flatEnvs: !ref ./config.test.env
+
+admins: !ref
+  uri: ./config.test.env
+  opts:
+    unflat: true
+    subSchema: admins
+    prefix: ADMINS
