@@ -1,11 +1,10 @@
-import { each, set, findKey, mapKeys, cloneDeep, get } from 'lodash-es'
+import { cloneDeep, each, get, set } from 'lodash-es'
 import fjp, {Operation} from 'fast-json-patch'
 import { EventEmitter, once } from 'events'
 import {SchemaObject, default as Ajv} from 'ajv'
 import { RefResolver } from './ref-resolver.js'
 const  { compare } = fjp
 import {flatten} from 'uni-flatten'
-import { ProcessArgvLoader, ProcessEnvLoader } from './readers.js'
 
 // adapted from https://github.com/sindresorhus/execa/blob/main/lib/promise.js
 const nativePromisePrototype = (async () => {})().constructor.prototype;
@@ -63,18 +62,20 @@ export class ConfigError extends Error {
 
 export class ConfigLoader<Config extends Object> extends EventEmitter implements WatchChangesEventEmitter<Config> {
     protected schema: SchemaObject
-    protected supportWatchChanges: boolean
     protected running = false
     protected config?: Config
     protected refResolver: RefResolver
     protected needReload = false
     protected loading = false
+    protected envPrefix?: string
 
     public constructor(opts: ConfigLoaderOpts) {
         super()
         this.schema = opts.schema
-        this.supportWatchChanges = opts.supportWatchChanges || false
-        this.refResolver = new RefResolver({})
+        this.refResolver = new RefResolver({
+            supportWatchChanges: opts.supportWatchChanges ?? false
+        })
+        this.envPrefix = opts.envPrefix
     }
 
     public start(abortSignal?: AbortSignal) {
@@ -99,6 +100,8 @@ export class ConfigLoader<Config extends Object> extends EventEmitter implements
         if (!this.running) {
             return
         }
+
+        this.needReload = false
 
         this.refResolver.clear()
 
@@ -125,12 +128,14 @@ export class ConfigLoader<Config extends Object> extends EventEmitter implements
     protected async _load() {
         this.emit('load')
 
-        let configLoad: Object = await this.__load()
+        let candidate: Object = await this.__load()
+
+        this.emit('candidate-loaded', candidate)
 
         let config: Config
 
         try {
-            config = this.validate(configLoad)
+            config = this.validate(candidate)
         } catch (e) {
             this.emit('error', e)
             return
@@ -145,55 +150,78 @@ export class ConfigLoader<Config extends Object> extends EventEmitter implements
         }
     }
 
-    protected async __load() {
-        this.loaders = {
-            env: new ProcessEnvLoader({ resolve: true, prefix: envPrefix, schema }),
-            arg: new ProcessArgvLoader(schema, true)
-        }
+    protected mergeWithPaths(obj1: object, obj2: object): object {
+        obj1 = cloneDeep(obj1)
+        obj2 = cloneDeep(obj2)
 
-        this.refResolver.clear()
-        const baseConfigs = await Promise.all([
-            this.uriLoader.resolveTokens(await this.loaders.env.load(), 'env:'),
-            this.uriLoader.resolveTokens(await this.loaders.arg.load(), 'arg:')
-        ])
-
-        const obj: Record<string, any> = cloneDeep(baseConfigs[0])
-
-        each(flatten(baseConfigs[1] as any), (v, path) => {
+        each(flatten(obj2 as any), (v, path) => {
             if (v === undefined) {
                 return
             }
-            set(obj, path, v)
+            set(obj1, path, v)
         })
 
+        return obj1
+    }
 
-        const configKey = findKey(obj, (_, k) => k.toLowerCase() === 'config')
+    protected async __load(): Promise<object> {
+        this.refResolver.clear()
 
-        if (configKey) {
-            const config = mapKeys(obj[configKey], (_, k) => k.toLowerCase())
-            if (config.uri) {
-                const pathLoadedObj = await this.uriLoader.load(config.uri, config.opts, new FileParent('file://' + process.cwd))
+        const env = await this.refResolver.resolve('env:', { unflat: true, schema: this.schema, prefix: this.envPrefix })
+        const arg = await this.refResolver.resolve('arg:', { unflat: true, schema: this.schema })
 
-                Object.assign(obj, pathLoadedObj)
+        const baseConf = this.mergeWithPaths(env, arg)
 
-                each(flatten(baseConfigs[0] as any), (v, path) => {
-                    if (v === undefined) {
-                        return
-                    }
-                    set(obj, path, v)
-                })
+        return baseConf
 
-                each(flatten(baseConfigs[1] as any), (v, path) => {
-                    if (v === undefined) {
-                        return
-                    }
-                    set(obj, path, v)
-                })
+        // this.loaders = {
+        //     env: new ProcessEnvLoader({ resolve: true, prefix: envPrefix, schema }),
+        //     arg: new ProcessArgvLoader(schema, true)
+        // }
 
-            }
-        }
+        // this.refResolver.clear()
+        // const baseConfigs = await Promise.all([
+        //     this.uriLoader.resolveTokens(await this.loaders.env.load(), 'env:'),
+        //     this.uriLoader.resolveTokens(await this.loaders.arg.load(), 'arg:')
+        // ])
 
-        return obj
+        // const obj: Record<string, any> = cloneDeep(baseConfigs[0])
+
+        // each(flatten(baseConfigs[1] as any), (v, path) => {
+        //     if (v === undefined) {
+        //         return
+        //     }
+        //     set(obj, path, v)
+        // })
+
+
+        // const configKey = findKey(obj, (_, k) => k.toLowerCase() === 'config')
+
+        // if (configKey) {
+        //     const config = mapKeys(obj[configKey], (_, k) => k.toLowerCase())
+        //     if (config.uri) {
+        //         const pathLoadedObj = await this.uriLoader.load(config.uri, config.opts, new FileParent('file://' + process.cwd))
+
+        //         Object.assign(obj, pathLoadedObj)
+
+        //         each(flatten(baseConfigs[0] as any), (v, path) => {
+        //             if (v === undefined) {
+        //                 return
+        //             }
+        //             set(obj, path, v)
+        //         })
+
+        //         each(flatten(baseConfigs[1] as any), (v, path) => {
+        //             if (v === undefined) {
+        //                 return
+        //             }
+        //             set(obj, path, v)
+        //         })
+
+        //     }
+        // }
+
+        // return obj
     }
 
     protected emitChanges(previousConfig: Config, config: Config) {

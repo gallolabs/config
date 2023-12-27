@@ -1,6 +1,7 @@
 import { clone } from "lodash-es"
 import { loadConfig } from "../src/index.js"
 import { setTimeout } from "timers/promises"
+import { inspect } from "util"
 
 const configOpts = {
     envPrefix: 'MYAPP',
@@ -46,7 +47,10 @@ const configOpts = {
     }
 }
 
-describe.only('config', () => {
+describe('config', () => {
+
+    process.on('unhandledRejection', console.error)
+
     before(() => {
         const envs = clone(process.env)
         const argvCount = process.argv.length
@@ -58,9 +62,30 @@ describe.only('config', () => {
         })
     })
 
-    it.only('multi config', async () => {
+    it.only('basic use with envs and args', async() => {
+        process.env.MYAPP_LOG_LEVEL='debug'
+        process.env.MYAPP_USERS_0_NAME='fromEnv0'
+        process.env.MYAPP_USERS_2_NAME='fromEnv2'
+        process.argv.push('--no-run')
+        process.argv.push('--users-0-name=fromArgv0')
+        process.argv.push('--users-1-name=fromArgv1')
 
-        process.on('unhandledRejection', console.error)
+        process.env.MYAPP_NO_IN_CONFIG_ENV='that'
+        process.argv.push('--no-in-config-arg=that')
+
+        const configLoading = loadConfig({...configOpts})
+
+        configLoading.on('candidate-loaded', (candidate) => {
+            console.log('candidate', inspect(candidate, {colors: true, depth: null}))
+        })
+
+        console.log(
+            'config',
+            inspect(await configLoading, {colors: true, depth: null})
+        )
+    })
+
+    it('multi config', async () => {
 
         process.env.MYAPP_LOG_LEVEL='debug'
 
@@ -79,7 +104,7 @@ describe.only('config', () => {
 
         const ac = new AbortController
 
-        const myConfig = loadConfig({...configOpts, watchChanges: true, abortSignal: ac.signal})
+        const myConfig = loadConfig({...configOpts, supportWatchChanges: true, abortSignal: ac.signal})
 
         myConfig.on('error', (error) => {
             console.error(error)

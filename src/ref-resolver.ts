@@ -2,14 +2,16 @@ import { Reader, HttpReader, FileReader, ProcessArgvReader, ProcessEnvReader } f
 import { cloneDeep, isEqual } from 'lodash-es'
 import jsonata from 'jsonata'
 import traverse from "traverse"
-import { ArgvParser, EnvParser, IniParser, JsonParser, Parser, TomlParser, XmlParser, YamlParser } from "./parsers.js"
+import { ArgvParser, EnvParser, IniParser, JsonParser, Parser, TextParser, TomlParser, XmlParser, YamlParser } from "./parsers.js"
 import { Token } from "./tokens.js"
 import EventEmitter from "events"
+import { SchemaObject } from "ajv"
 
 export interface RefResolvingOpts {
     // including readers & parsers options
     watch?: boolean
     contentType?: string
+    schema?: SchemaObject
     [k: string]: any
 }
 
@@ -36,15 +38,18 @@ export class RefResolver extends EventEmitter{
         new IniParser,
         new TomlParser,
         new YamlParser,
-        new XmlParser
+        new XmlParser,
+        new TextParser
     ]
 
     protected references: Reference[] = []
 
+    protected supportWatchChanges
+
     public constructor(
-        {additionalReaders, additionalParsers}:
-        {additionalReaders?: Reader[], additionalParsers: Parser[]}
-    ) {
+        {additionalReaders, additionalParsers, supportWatchChanges}:
+        {additionalReaders?: Reader[], additionalParsers?: Parser[], supportWatchChanges?: boolean}
+    = {}) {
         super()
         if (additionalReaders) {
             this.readers = [...this.readers, ...additionalReaders]
@@ -52,6 +57,7 @@ export class RefResolver extends EventEmitter{
         if (additionalParsers) {
             this.parsers = [...this.parsers, ...additionalParsers]
         }
+        this.supportWatchChanges = supportWatchChanges ?? true
     }
 
     public clear() {
@@ -60,7 +66,7 @@ export class RefResolver extends EventEmitter{
         this.references = []
     }
 
-    public async resolve(uri: string, opts: RefResolvingOpts, parentReference?: Reference): Promise<any> {
+    public async resolve(uri: string, opts: RefResolvingOpts = {}, parentReference?: Reference): Promise<any> {
         const [uriWithoutFragment, ...fragments] = uri.split('#')
         const fragment = fragments.join('#')
 
@@ -107,8 +113,10 @@ export class RefResolver extends EventEmitter{
                 }
 
                 reference.data = (async() => {
+                    if (!this.supportWatchChanges) {
+                        opts.watch = false
+                    }
                     const rawData = await reader.read(absoluteUriWithoutFragment, opts, abortController.signal)
-
                     rawData.on('stale', () => {
                         this.emit('stale')
                     })
@@ -120,8 +128,9 @@ export class RefResolver extends EventEmitter{
                     if (!parser) {
                         throw new Error('Unable to find parser for ' + contentType + ' on ' + absoluteUriWithoutFragment)
                     }
+                    const parsedData = await parser.parse(rawData.getContent(), opts)
 
-                    return await this.resolveTokens(await parser.parse(rawData.getContent(), opts), reference)
+                    return await this.resolveTokens(parsedData, reference)
                 })()
 
                 this.references.push(reference)

@@ -6,15 +6,17 @@ import chokidar from 'chokidar'
 import EventEmitter from "events"
 import { Mime } from "mime"
 // @ts-ignore
-import standardMime from 'types/standard.js'
+import standardMime from 'mime/types/standard.js'
 // @ts-ignore
-import othersMime from 'types/others.js'
+import othersMime from 'mime/types/other.js'
 
-const mime = new Mime(standardMime, othersMime, {
+const mime = new Mime(standardMime, othersMime)
+
+mime.define({
     'application/x.argv': ['argv'],
     'application/x.env': ['env'],
     'application/x.ini': ['ini']
-})
+}, true)
 
 export interface ReaderOpts {
     watch?: boolean
@@ -22,7 +24,7 @@ export interface ReaderOpts {
 }
 
 export interface Reader {
-    canRead(uriWithoutFragment: string): Promise<boolean>
+    canRead(uriWithoutFragment: string): boolean
     read(uriWithoutFragment: string, opts: ReaderOpts, abortSignal: AbortSignal): Promise<ReadContent>
     resolveUri?(uriWithoutFragment: string, parentUriWithoutFragment: string): string
 }
@@ -47,7 +49,7 @@ export class ReadContent extends EventEmitter implements ReadContent {
 }
 
 export class HttpReader implements Reader {
-    async canRead(uriWithoutFragment: string): Promise<boolean> {
+    public canRead(uriWithoutFragment: string): boolean {
         return uriWithoutFragment.startsWith('http:')
             || uriWithoutFragment.startsWith('https:')
     }
@@ -93,7 +95,7 @@ export class HttpReader implements Reader {
 }
 
 export class FileReader implements Reader {
-    async canRead(uriWithoutFragment: string): Promise<boolean> {
+    public canRead(uriWithoutFragment: string): boolean {
         return uriWithoutFragment.startsWith('file:///') // Only localhost
     }
 
@@ -130,7 +132,7 @@ export class FileReader implements Reader {
 }
 
 export class ProcessArgvReader implements Reader {
-    public async canRead(uriWithoutFragment: string) {
+    public canRead(uriWithoutFragment: string) {
         return uriWithoutFragment.startsWith('arg:')
     }
 
@@ -153,9 +155,8 @@ export class ProcessArgvReader implements Reader {
     }
 }
 
-
 export class ProcessEnvReader implements Reader {
-    public async canRead(uriWithoutFragment: string) {
+    public canRead(uriWithoutFragment: string) {
         return uriWithoutFragment.startsWith('env:')
     }
 
