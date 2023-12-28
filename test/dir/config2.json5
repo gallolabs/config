@@ -2,5 +2,6 @@
     // The users
     users: [
         { name: 'config2Name' }
-    ]
+    ],
+    oneValue: 'hello'
 }
