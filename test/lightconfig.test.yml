@@ -25,3 +25,9 @@ admins: !ref
     unflat: true
     subSchema: admins
     prefix: ADMINS
+
+apiId: !ref
+  uri: https://random-data-api.com/api/beer/random_beer#id
+  opts:
+    watchInterval: 1000
+    allowfail: true

@@ -24,6 +24,7 @@ interface MyAppConfig {
     availableRepositories?: string[]
     flatEnvs?: Record<string, string>
     admins?: Array<{firstName: string}>
+    apiId?: number
 }
 
 const configOpts = {
@@ -37,7 +38,7 @@ async function loadTestConfig(opts: any = {}) {
 
     const configLoading = loadConfig<MyAppConfig>({...configOpts, ...opts})
 
-    configLoading.on('debug-info', (info) => {
+    configLoading.on('debug-trace', (info) => {
         debugStream.write(JSON.stringify({date: new Date, ...info}, undefined, 4) + '\n')
     })
 
@@ -137,7 +138,7 @@ describe('config', () => {
         )
     })
 
-    it.only('load config from dir', async() => {
+    it('load config from dir', async() => {
         process.env.MYAPP_RUN='false'
 
         process.env.MYAPP_CONFIG='@ref file://'+process.cwd()+'/test/dir {merge: true, deepMerge:true, watch: true}'
@@ -150,10 +151,19 @@ describe('config', () => {
         abortController.abort()
     }).timeout(10500)
 
+
+    it.only('self reference fix', async() => {
+        process.env.MYAPP_RUN='false'
+
+        process.env.MYAPP_CONFIG='@ref file://'+process.cwd()+'/test/config-selfref.test.yml'
+
+        await loadTestConfig()
+    })
+
     it('load config from file', async() => {
         process.env.MYAPP_RUN='false'
 
-        process.env.MYAPP_CONFIG='@ref file:///'+process.cwd()+'/test/lightconfig.test.yml'
+        process.env.MYAPP_CONFIG='@ref file://'+process.cwd()+'/test/lightconfig.test.yml'
 
         process.env.MYAPP_USERS_0_NAME='envName'
 

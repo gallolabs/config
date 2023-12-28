@@ -78,14 +78,6 @@ export class RefResolver extends EventEmitter {
 
     public async resolve(uri: string, opts: RefResolvingOpts = {}, parentReference?: Reference): Promise<any> {
 
-        this.emit('debug-info', {
-            type: 'resolve',
-            uid: this.uid,
-            uri,
-            opts,
-            parentReference
-        })
-
         const [uriWithoutFragment, ...fragments] = uri.split('#')
         const fragment = fragments.join('#')
 
@@ -97,6 +89,19 @@ export class RefResolver extends EventEmitter {
             !uriWithoutFragmentHasScheme && parentReference
             ? parentReference.reader.resolveUri(uriWithoutFragment, parentReference.uriWithoutFragment)
             : uriWithoutFragment
+
+        const resolveUid = (Math.random()).toString()
+
+        this.emit('debug-trace', {
+            type: 'resolve-request',
+            resolveUid,
+            uid: this.uid,
+            uri,
+            absoluteUriWithoutFragment,
+            fragment,
+            opts,
+            parentReference
+        })
 
         if (parentReference && parentReference.parent && absoluteUriWithoutFragment === parentReference.parent.uriWithoutFragment) {
             throw new Error('Circular reference on ' + absoluteUriWithoutFragment + ' and ' + parentReference.uriWithoutFragment)
@@ -117,7 +122,16 @@ export class RefResolver extends EventEmitter {
         let reference: Reference
 
         if (!absoluteUriWithoutFragment) {
+
             reference = parentReference!
+
+            this.emit('debug-trace', {
+                type: 'resolve-reference',
+                action: 'using-parent',
+                resolveUid,
+                uid: this.uid,
+                reference
+            })
         } else {
             const existingReference = this.references.find(reference => {
                 return reference.uriWithoutFragment === absoluteUriWithoutFragment
@@ -126,6 +140,15 @@ export class RefResolver extends EventEmitter {
 
             if (existingReference) {
                 reference = existingReference
+
+                this.emit('debug-trace', {
+                    type: 'found-exist',
+                    action: 'using-parent',
+                    resolveUid,
+                    uid: this.uid,
+                    reference
+                })
+
             } else {
                 const reader = this.readers.find(reader => reader.canRead(absoluteUriWithoutFragment))
 
@@ -145,14 +168,22 @@ export class RefResolver extends EventEmitter {
                     parent: parentReference
                 }
 
+                this.emit('debug-trace', {
+                    type: 'resolve-reference',
+                    action: 'create',
+                    resolveUid,
+                    uid: this.uid,
+                    reference
+                })
+
                 reference.data = (async() => {
                     const rawData = await reader.read(absoluteUriWithoutFragment, opts, abortController.signal)
                     rawData.on('stale', () => {
                         this.emit('stale')
                     })
                     rawData.on('error', () => this.emit('error'))
-                    rawData.on('debug-info', (info) => {
-                        this.emit('debug-info', {
+                    rawData.on('debug-trace', (info) => {
+                        this.emit('debug-trace', {
                             refResolverUid: this.uid,
                             ...info,
                             subject: 'ReadData',
@@ -181,19 +212,38 @@ export class RefResolver extends EventEmitter {
             }
         }
 
-        const data = await reference.data
+        this.emit('debug-trace', {
+            type: 'resolve-wait-data',
+            resolveUid,
+            uid: this.uid,
+            reference
+        })
 
-        if (!fragment) {
-            return data
+        let data = await reference.data
+
+        if (fragment) {
+            this.emit('debug-trace', {
+                type: 'resolve-apply-fragment',
+                resolveUid,
+                uid: this.uid,
+                reference
+            })
+
+            data = get(data, fragment)
+
+            if (data === undefined) {
+               throw new Error('subRessource not found : ' + fragment + ' on ' + absoluteUriWithoutFragment)
+            }
         }
 
-        const subRessource = get(data, fragment)
+        this.emit('debug-trace', {
+            type: 'resolve-ended',
+            resolveUid,
+            uid: this.uid,
+            reference
+        })
 
-        if (subRessource === undefined) {
-           throw new Error('subRessource not found : ' + fragment + ' on ' + absoluteUriWithoutFragment)
-        }
-
-        return subRessource
+        return data
     }
 
     protected async resolveTokens(data: any, reference: Reference) {

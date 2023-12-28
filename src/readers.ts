@@ -180,10 +180,10 @@ export class FileReader implements Reader {
                 })
                 .on('error', (error) => rc.emit('error', error))
 
-            watcher.on('ready', () => rc.emit('debug-info', { type: 'watching' }))
+            watcher.on('ready', () => rc.emit('debug-trace', { type: 'watching' }))
 
             abortSignal.addEventListener('abort', () => {
-                rc.emit('debug-info', { type: 'unwatching' })
+                rc.emit('debug-trace', { type: 'unwatching' })
                 watcher.close().catch((error) => rc.emit('error', error))
             })
         }
@@ -209,10 +209,10 @@ export class FileReader implements Reader {
                 })
                 .on('error', (error) => rc.emit('error', error))
 
-            watcher.on('ready', () => rc.emit('debug-info', { type: 'watching' }))
+            watcher.on('ready', () => rc.emit('debug-trace', { type: 'watching' }))
 
             abortSignal.addEventListener('abort', () => {
-                rc.emit('debug-info', { type: 'unwatching' })
+                rc.emit('debug-trace', { type: 'unwatching' })
                 watcher.close().catch((error) => rc.emit('error', error))
             })
         }

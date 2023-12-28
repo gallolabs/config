@@ -3,6 +3,10 @@
   <p align="center"><strong>Gallo config</strong></p>
 </p>
 
+## Work in progress in main branch
+
+But should be good
+
 ## Definition
 
 Global Workflow :

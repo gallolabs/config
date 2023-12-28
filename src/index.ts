@@ -84,9 +84,9 @@ export class ConfigLoader<Config extends Object> extends EventEmitter implements
         const refResolver = new RefResolver({
             supportWatchChanges: this.supportWatchChanges
         })
-        refResolver.on('debug-info', (info) => this.emit('debug-info', info))
+        refResolver.on('debug-trace', (info) => this.emit('debug-trace', info))
         refResolver.on('stale', () => {
-            this.emit('debug-info', {type: 'stale'})
+            this.emit('debug-trace', {type: 'stale'})
             this.load()
         })
         refResolver.on('error', (error) => this.emit('error', error))
@@ -144,16 +144,16 @@ export class ConfigLoader<Config extends Object> extends EventEmitter implements
 
         try {
             candidate = await this.__load()
-            this.emit('debug-info', {type: 'references', references: this.refResolver.getReferences()})
+            this.emit('debug-trace', {type: 'references', references: this.refResolver.getReferences()})
         } catch (e) {
-            this.emit('debug-info', {type: 'references', references: this.refResolver.getReferences()})
+            this.emit('debug-trace', {type: 'references', references: this.refResolver.getReferences()})
             this.emit('error', e)
             this.refResolver.clear()
             this.refResolver = previousRefResolver
             return
         }
 
-        this.emit('debug-info', {type: 'candidate', candidate})
+        this.emit('debug-trace', {type: 'candidate', candidate})
 
         let config: Config
 
