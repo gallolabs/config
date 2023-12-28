@@ -153,7 +153,7 @@ describe('config', () => {
 
 
     it.only('self reference fix', async() => {
-        process.env.MYAPP_RUN='false'
+        //process.env.MYAPP_RUN='false'
 
         process.env.MYAPP_CONFIG='@ref file://'+process.cwd()+'/test/config-selfref.test.yml'
 

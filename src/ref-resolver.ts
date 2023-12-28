@@ -86,7 +86,7 @@ export class RefResolver extends EventEmitter {
         // parentReader is http://x/a.json and called ./b.json, calling
         // Reader a.json to resolve ./b.json as http://x/b.json
         const absoluteUriWithoutFragment =
-            !uriWithoutFragmentHasScheme && parentReference
+            !uriWithoutFragmentHasScheme && parentReference && uriWithoutFragment
             ? parentReference.reader.resolveUri(uriWithoutFragment, parentReference.uriWithoutFragment)
             : uriWithoutFragment
 
@@ -122,7 +122,6 @@ export class RefResolver extends EventEmitter {
         let reference: Reference
 
         if (!absoluteUriWithoutFragment) {
-
             reference = parentReference!
 
             this.emit('debug-trace', {
@@ -205,7 +204,7 @@ export class RefResolver extends EventEmitter {
                         parsedData = rawData.getContent()
                     }
 
-                    return await this.resolveTokens(parsedData, reference)
+                    return parsedData
                 })()
 
                 this.references.push(reference)
@@ -221,9 +220,22 @@ export class RefResolver extends EventEmitter {
 
         let data = await reference.data
 
-        if (fragment) {
+        if (!fragment) {
             this.emit('debug-trace', {
-                type: 'resolve-apply-fragment',
+                type: 'no-fragment-end',
+                resolveUid,
+                uid: this.uid,
+                reference
+            })
+
+            return await this.resolveTokens(data, reference)
+        }
+
+        // for self refering, exception is done because we can't wait for resolveTokens
+        // Else ... infinite loop
+        if (reference === parentReference) {
+            this.emit('debug-trace', {
+                type: 'fragment-selfref-end',
                 resolveUid,
                 uid: this.uid,
                 reference
@@ -232,16 +244,26 @@ export class RefResolver extends EventEmitter {
             data = get(data, fragment)
 
             if (data === undefined) {
-               throw new Error('subRessource not found : ' + fragment + ' on ' + absoluteUriWithoutFragment)
+               throw new Error('subRessource not found : ' + fragment + ' on self ('+reference.uriWithoutFragment+')')
             }
+
+            return await this.resolveTokens(data, reference)
         }
 
         this.emit('debug-trace', {
-            type: 'resolve-ended',
+            type: 'fragment-end',
             resolveUid,
             uid: this.uid,
             reference
         })
+
+        data = await this.resolveTokens(data, reference)
+
+        data = get(data, fragment)
+
+        if (data === undefined) {
+           throw new Error('subRessource not found : ' + fragment + ' on ' + absoluteUriWithoutFragment)
+        }
 
         return data
     }
