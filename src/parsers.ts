@@ -3,7 +3,6 @@ import { RefToken, QueryToken, createTokensIfPresentFromString } from "./tokens.
 import YAML from 'yaml'
 import { parse as parseIni } from 'ini'
 import toml from 'toml'
-import stripJsonComments from 'strip-json-comments'
 import minimist from "minimist"
 import { mapValues } from "lodash-es"
 import traverse from "traverse"
@@ -20,6 +19,22 @@ export interface Parser {
     canParse(contentType: string): boolean
     parse: (content: unknown, opts: ParserOpts, contentType: string) => Promise<any>
 }
+
+// export class MulticontentParser implements Parser {
+//     public canParse(contentType: string): boolean {
+//         return contentType === 'application/x.multicontent'
+//     }
+//     public async parse(content: unknown, _: ParserOpts): Promise<Object> {
+//         if (!(content instanceof Object)) {
+//             throw new Error('Unsupport content variable type : ' + typeof content)
+//         }
+
+//         const items: Array<{content: Buffer, contentType: string}> = content as any
+
+
+
+//     }
+// }
 
 export class BinaryParser implements Parser {
     public canParse(contentType: string): boolean {
@@ -110,7 +125,7 @@ export class JsonParser implements Parser {
             throw new Error('Unsupport content variable type : ' + typeof content)
         }
 
-        const obj = JSON.parse(stripJsonComments(content.toString()))
+        const obj = JSON.parse(content.toString())
 
         traverse(obj).forEach(function (val) {
             if (val instanceof Object) {

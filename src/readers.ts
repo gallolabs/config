@@ -1,4 +1,5 @@
-import { readFile /*, readdir*/ } from "fs/promises"
+import { readFile, /*, readdir*/
+stat} from "fs/promises"
 import minimist from 'minimist'
 import got from 'got'
 import { extname } from "path"
@@ -9,6 +10,9 @@ import { Mime } from "mime"
 import standardMime from 'mime/types/standard.js'
 // @ts-ignore
 import othersMime from 'mime/types/other.js'
+import { glob } from "glob"
+import { Token } from "./tokens.js"
+import { RefResolver } from "./ref-resolver.js"
 
 const mime = new Mime(standardMime, othersMime)
 
@@ -29,11 +33,11 @@ export interface Reader {
     resolveUri(uriWithoutFragment: string, parentUriWithoutFragment: string): string
 }
 
-export class ReadContent extends EventEmitter implements ReadContent {
-    protected contentType: string
+export class ReadContent extends EventEmitter {
+    protected contentType: string | null
     protected content: any
 
-    public constructor(contentType: string, content: any) {
+    public constructor(contentType: string | null, content: any) {
         super()
         this.contentType = contentType
         this.content = content
@@ -94,6 +98,22 @@ export class HttpReader implements Reader {
     }
 }
 
+class DirToken extends Token {
+    protected files: string[]
+    protected opts: any
+    public constructor(files: string[], opts: any) {
+        super()
+        this.files = files
+        this.opts = opts
+
+    }
+    public async resolve(refResolver: RefResolver) {
+        const value = await Promise.all(this.files.map(file => refResolver.resolve('file://' + file, {watch: this.opts.watch})))
+
+        return value
+    }
+}
+
 export class FileReader implements Reader {
     public canRead(uriWithoutFragment: string): boolean {
         return uriWithoutFragment.startsWith('file://')
@@ -103,7 +123,7 @@ export class FileReader implements Reader {
         return new URL(uriWithoutFragment, parentUriWithoutFragment).toString()
     }
 
-    async read(uriWithoutFragment: string, opts: ReaderOpts, abortSignal: AbortSignal): Promise<ReadContent> {
+    public async read(uriWithoutFragment: string, opts: ReaderOpts, abortSignal: AbortSignal): Promise<ReadContent> {
         // if (!uriWithoutFragment.startsWith('file:/')) {
         //     uriWithoutFragment = uriWithoutFragment.replace('file:', 'file://' + process.cwd() + '/')
         // }
@@ -114,6 +134,32 @@ export class FileReader implements Reader {
             throw new Error('Unhandled hostname')
         }
 
+        if ((await stat(path)).isDirectory()) {
+            return this.readDir(path, opts, abortSignal)
+        }
+
+        return this.readFile(path, opts, abortSignal)
+    }
+
+    protected async readDir(path: string, opts: ReaderOpts & { filePattern?: string }, _abortSignal: AbortSignal) {
+        const files = await glob(opts.filePattern || '**/*', {nodir: true, absolute: true, cwd: path })
+        //const contents = await Promise.all(files.map(file => readFile(file)))
+
+        // const rc = new ReadContent('application/x.multicontent', files.map((file, i) => {
+        //     const contentType = mime.getType(extname(file).substring(1)) || 'text/plain'
+        //     const content = contents[i]
+
+        //     return { contentType, content }
+        // }))
+
+        // const rc = new ReadContent('application/x.', files.map(file => new RefToken('file://' + file, {watch: opts.watch})))
+
+        const rc = new ReadContent(null, new DirToken(files, opts))
+
+        return rc
+    }
+
+    protected async readFile(path: string, opts: ReaderOpts, abortSignal: AbortSignal) {
         const content = await readFile(path)
         const contentType = mime.getType(extname(path).substring(1)) || 'text/plain'
 

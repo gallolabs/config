@@ -30,8 +30,6 @@ const configOpts = {
     schema: tsToJsSchema<MyAppConfig>()
 }
 
-console.log(configOpts.schema)
-
 async function loadTestConfig() {
     const configLoading = loadConfig<MyAppConfig>({...configOpts})
 
@@ -127,14 +125,22 @@ describe('config', () => {
         )
     })
 
-    it.only('load config from file', async() => {
+    it.only('load config from dir', async() => {
+        process.env.MYAPP_RUN='false'
+
+        process.env.MYAPP_CONFIG='@ref file:///'+process.cwd()+'/test/dir'
+
+        process.env.MYAPP_USERS_0_NAME='envName'
+
+        await loadTestConfig()
+    })
+
+    it('load config from file', async() => {
         process.env.MYAPP_RUN='false'
 
         process.env.MYAPP_CONFIG='@ref file:///'+process.cwd()+'/test/lightconfig.test.yml'
 
         process.env.MYAPP_USERS_0_NAME='envName'
-
-        await loadTestConfig()
 
         const config = await loadTestConfig()
 

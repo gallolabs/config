@@ -1,7 +1,7 @@
 import { Reader, HttpReader, FileReader, ProcessArgvReader, ProcessEnvReader } from "./readers.js"
 import { cloneDeep, get, isEqual } from 'lodash-es'
 import traverse from "traverse"
-import { ArgvParser, BinaryParser, EnvParser, IniParser, JsonParser, Parser, TextParser, TomlParser, XmlParser, YamlParser } from "./parsers.js"
+import { ArgvParser, BinaryParser, EnvParser, IniParser, JsonParser, /*MulticontentParser,*/ Parser, TextParser, TomlParser, XmlParser, YamlParser } from "./parsers.js"
 import { Token } from "./tokens.js"
 import EventEmitter from "events"
 import { SchemaObject } from "ajv"
@@ -40,6 +40,7 @@ export class RefResolver extends EventEmitter{
         new YamlParser,
         new XmlParser,
         new TextParser,
+        //new MulticontentParser,
         new BinaryParser
     ]
 
@@ -130,12 +131,18 @@ export class RefResolver extends EventEmitter{
                     rawData.on('error', () => this.emit('error'))
 
                     const contentType = opts.contentType || rawData.getContentType()
-                    const parser = this.parsers.find(parser => parser.canParse(contentType))
+                    let parsedData
 
-                    if (!parser) {
-                        throw new Error('Unable to find parser for ' + contentType + ' on ' + absoluteUriWithoutFragment)
+                    if (contentType) {
+                        const parser = this.parsers.find(parser => parser.canParse(contentType))
+
+                        if (!parser) {
+                            throw new Error('Unable to find parser for ' + contentType + ' on ' + absoluteUriWithoutFragment)
+                        }
+                        parsedData = await parser.parse(rawData.getContent(), opts, contentType)
+                    } else {
+                        parsedData = rawData.getContent()
                     }
-                    const parsedData = await parser.parse(rawData.getContent(), opts, contentType)
 
                     return await this.resolveTokens(parsedData, reference)
                 })()
