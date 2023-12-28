@@ -33,6 +33,7 @@
     "traverse": "^0.6.7",
     "ts-patch": "^3.1.1",
     "uni-flatten": "^1.5.5",
+    "xml2js": "^0.6.2",
     "yaml": "^2.3.4"
   },
   "devDependencies": {
@@ -42,6 +43,7 @@
     "@types/node": "^20.10.4",
     "@types/parse-env-string": "^1.0.2",
     "@types/traverse": "^0.6.36",
+    "@types/xml2js": "^0.4.14",
     "c8": "^8.0.1",
     "mocha": "^10.2.0",
     "release-it": "^17.0.1",

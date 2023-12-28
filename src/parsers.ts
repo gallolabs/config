@@ -10,6 +10,7 @@ import stringArgv from 'string-argv'
 import { SchemaObject } from "ajv"
 import { flatDictToDeepObject } from "./unflat-mapper.js"
 import JSON5 from 'json5'
+import xml2js from 'xml2js'
 
 export interface ParserOpts {
     [k: string]: any
@@ -249,7 +250,13 @@ export class XmlParser implements Parser {
     public canParse(contentType: string): boolean {
         return contentType.split(';')[0] === 'application/xml'
     }
-    public async parse(): Promise<Object> {
-        throw new Error('todo')
+    public async parse(content: unknown, opts: ParserOpts & { keepXmlRoot?: boolean }): Promise<Object> {
+        if (!(content instanceof Buffer || typeof content === 'string')) {
+            throw new Error('Unsupport content variable type : ' + typeof content)
+        }
+
+        var parser = new xml2js.Parser({mergeAttrs: true, explicitArray: false, explicitRoot: opts.keepXmlRoot ?? false});
+
+        return parser.parseStringPromise(content.toString())
     }
 }
