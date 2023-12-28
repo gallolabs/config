@@ -12,7 +12,7 @@ import standardMime from 'mime/types/standard.js'
 import othersMime from 'mime/types/other.js'
 import { glob } from "glob"
 import { Token } from "./tokens.js"
-import { RefResolver } from "./ref-resolver.js"
+import { RefResolver, Reference } from "./ref-resolver.js"
 import { merge } from "lodash-es"
 import deepmerge from "deepmerge"
 
@@ -109,8 +109,10 @@ class DirToken extends Token {
         this.opts = opts
 
     }
-    public async resolve(refResolver: RefResolver) {
-        const value = await Promise.all(this.files.map(file => refResolver.resolve('file://' + file, {watch: this.opts.watch})))
+    public async resolve(refResolver: RefResolver, reference: Reference) {
+        const value = await Promise.all(this.files.map(file =>
+            refResolver.resolve('file://' + file, {watch: this.opts.watch}, reference)
+        ))
 
         if (this.opts.merge) {
             if (this.opts.deepMerge) {
@@ -151,8 +153,8 @@ export class FileReader implements Reader {
         return this.readFile(path, opts, abortSignal)
     }
 
-    protected async readDir(path: string, opts: ReaderOpts & { filePattern?: string }, _abortSignal: AbortSignal) {
-        const files = await glob(opts.filePattern || '**/*', {nodir: true, absolute: true, cwd: path,  })
+    protected async readDir(path: string, opts: ReaderOpts & { filePattern?: string }, abortSignal: AbortSignal) {
+        const files = await glob(opts.filePattern || '**/*', {nodir: true, absolute: true, cwd: path })
         //const contents = await Promise.all(files.map(file => readFile(file)))
 
         // const rc = new ReadContent('application/x.multicontent', files.map((file, i) => {
@@ -165,6 +167,26 @@ export class FileReader implements Reader {
         // const rc = new ReadContent('application/x.', files.map(file => new RefToken('file://' + file, {watch: opts.watch})))
 
         const rc = new ReadContent(null, new DirToken(files.sort(), opts))
+
+        // It is too late here because file can have been modified before watch start
+        if (opts.watch) {
+            const watcher = chokidar
+                .watch(path, {ignored: path + '/*.*'})
+                .on('all', async(type, _path) => {
+                    if (type === 'addDir' && _path === path) {
+                        return
+                    }
+                    rc.emit('stale')
+                })
+                .on('error', (error) => rc.emit('error', error))
+
+            watcher.on('ready', () => rc.emit('debug-info', { type: 'watching' }))
+
+            abortSignal.addEventListener('abort', () => {
+                rc.emit('debug-info', { type: 'unwatching' })
+                watcher.close().catch((error) => rc.emit('error', error))
+            })
+        }
 
         return rc
     }
@@ -187,7 +209,10 @@ export class FileReader implements Reader {
                 })
                 .on('error', (error) => rc.emit('error', error))
 
+            watcher.on('ready', () => rc.emit('debug-info', { type: 'watching' }))
+
             abortSignal.addEventListener('abort', () => {
+                rc.emit('debug-info', { type: 'unwatching' })
                 watcher.close().catch((error) => rc.emit('error', error))
             })
         }

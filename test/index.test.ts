@@ -1,9 +1,10 @@
 import { clone } from "lodash-es"
 import { loadConfig } from "../src/index.js"
-import { setTimeout } from "timers/promises"
 import { inspect } from "util"
 import assert from "assert"
 import { tsToJsSchema } from "@gallolabs/typescript-transform-to-json-schema"
+import { setTimeout } from "timers/promises"
+import { createWriteStream } from "fs"
 
 interface MyAppConfig {
     run: boolean
@@ -27,14 +28,21 @@ interface MyAppConfig {
 
 const configOpts = {
     envPrefix: 'MYAPP',
-    schema: tsToJsSchema<MyAppConfig>()
+    schema: tsToJsSchema<MyAppConfig>(),
+    supportWatchChanges: true
 }
 
-async function loadTestConfig() {
-    const configLoading = loadConfig<MyAppConfig>({...configOpts})
+async function loadTestConfig(opts: any = {}) {
+    const debugStream = createWriteStream('/tmp/debug-config.json', {flags: 'w'})
 
-    configLoading.on('candidate-loaded', (candidate) => {
-        console.log('candidate', inspect(candidate, {colors: true, depth: null}))
+    const configLoading = loadConfig<MyAppConfig>({...configOpts, ...opts})
+
+    configLoading.on('debug-info', (info) => {
+        debugStream.write(JSON.stringify({date: new Date, ...info}, undefined, 4) + '\n')
+    })
+
+    configLoading.on('change', (change) => {
+        console.log('change', inspect(change, {colors: true, depth: null}))
     })
 
     const config = await configLoading
@@ -44,12 +52,16 @@ async function loadTestConfig() {
         inspect(config, {colors: true, depth: null})
     )
 
+    configLoading.on('error', (error) => {
+        console.log('error', inspect(error, {colors: true, depth: null}))
+    })
+
     return config
 }
 
 describe('config', () => {
 
-    process.on('unhandledRejection', console.error)
+    process.on('unhandledRejection', (e, f) => console.error('unhandledRejection', e, f))
 
     before(() => {
         const envs = clone(process.env)
@@ -128,12 +140,15 @@ describe('config', () => {
     it.only('load config from dir', async() => {
         process.env.MYAPP_RUN='false'
 
-        process.env.MYAPP_CONFIG='@ref file:///'+process.cwd()+'/test/dir {merge: true, deepMerge:true}'
+        process.env.MYAPP_CONFIG='@ref file://'+process.cwd()+'/test/dir {merge: true, deepMerge:true, watch: true}'
 
         process.env.MYAPP_USERS_2_NAME='envName'
+        const abortController = new AbortController
+        await loadTestConfig({abortSignal: abortController.signal})
 
-        await loadTestConfig()
-    })
+        await setTimeout(10000)
+        abortController.abort()
+    }).timeout(10500)
 
     it('load config from file', async() => {
         process.env.MYAPP_RUN='false'
@@ -217,7 +232,7 @@ describe('config', () => {
             console.log(change)
         })
 
-        await setTimeout(10000)
+        //await setTimeout(10000)
 
         ac.abort()
     }).timeout(60000)

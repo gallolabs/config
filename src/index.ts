@@ -67,18 +67,31 @@ export class ConfigLoader<Config extends Object> extends EventEmitter implements
     protected schema: SchemaObject
     protected running = false
     protected config?: Config
-    protected refResolver: RefResolver
+    protected refResolver?: RefResolver
     protected needReload = false
     protected loading = false
     protected envPrefix?: string
+    protected supportWatchChanges: boolean
 
     public constructor(opts: ConfigLoaderOpts) {
         super()
         this.schema = opts.schema
-        this.refResolver = new RefResolver({
-            supportWatchChanges: opts.supportWatchChanges ?? false
-        })
         this.envPrefix = opts.envPrefix
+        this.supportWatchChanges = opts.supportWatchChanges ?? false
+    }
+
+    protected createRefResolver() {
+        const refResolver = new RefResolver({
+            supportWatchChanges: this.supportWatchChanges
+        })
+        refResolver.on('debug-info', (info) => this.emit('debug-info', info))
+        refResolver.on('stale', () => {
+            this.emit('debug-info', {type: 'stale'})
+            this.load()
+        })
+        refResolver.on('error', (error) => this.emit('error', error))
+
+        return refResolver
     }
 
     public start(abortSignal?: AbortSignal) {
@@ -91,11 +104,6 @@ export class ConfigLoader<Config extends Object> extends EventEmitter implements
         abortSignal?.addEventListener('abort', () => this.stop())
         this.running = true
 
-        this.refResolver.on('stale', () => {
-            this.load()
-        })
-        this.refResolver.on('error', (error) => this.emit('error', error))
-
         this.load()
     }
 
@@ -106,7 +114,7 @@ export class ConfigLoader<Config extends Object> extends EventEmitter implements
 
         this.needReload = false
 
-        this.refResolver.clear()
+        this.refResolver?.clear()
 
         this.running = false
     }
@@ -131,15 +139,21 @@ export class ConfigLoader<Config extends Object> extends EventEmitter implements
     protected async _load() {
         this.emit('load')
         let candidate: Object
+        const previousRefResolver = this.refResolver
+        this.refResolver = this.createRefResolver()
 
         try {
             candidate = await this.__load()
+            this.emit('debug-info', {type: 'references', references: this.refResolver.getReferences()})
         } catch (e) {
+            this.emit('debug-info', {type: 'references', references: this.refResolver.getReferences()})
             this.emit('error', e)
+            this.refResolver.clear()
+            this.refResolver = previousRefResolver
             return
         }
 
-        this.emit('candidate-loaded', candidate)
+        this.emit('debug-info', {type: 'candidate', candidate})
 
         let config: Config
 
@@ -147,12 +161,15 @@ export class ConfigLoader<Config extends Object> extends EventEmitter implements
             config = this.validate(candidate)
         } catch (e) {
             this.emit('error', e)
+            this.refResolver.clear()
+            this.refResolver = previousRefResolver
             return
         }
 
         const previousConfig = this.config
         this.config = config
         this.emit('loaded', config)
+        previousRefResolver?.clear()
 
         if (previousConfig) {
             this.emitChanges(previousConfig, config)
@@ -174,10 +191,8 @@ export class ConfigLoader<Config extends Object> extends EventEmitter implements
     }
 
     protected async __load(): Promise<object> {
-        this.refResolver.clear()
-
-        const env = await this.refResolver.resolve('env:', { unflat: true, schema: this.schema, prefix: this.envPrefix })
-        const arg = await this.refResolver.resolve('arg:', { unflat: true, schema: this.schema })
+        const env = await this.refResolver!.resolve('env:', { unflat: true, schema: this.schema, prefix: this.envPrefix })
+        const arg = await this.refResolver!.resolve('arg:', { unflat: true, schema: this.schema })
 
         let conf = this.mergeWithPaths(env, arg)
 

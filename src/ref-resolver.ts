@@ -15,6 +15,7 @@ export interface RefResolvingOpts {
 }
 
 export interface Reference {
+    uid: string
     uriWithoutFragment: string
     opts: RefResolvingOpts
     reader: Reader
@@ -23,7 +24,7 @@ export interface Reference {
     parent?: Reference
 }
 
-export class RefResolver extends EventEmitter{
+export class RefResolver extends EventEmitter {
     protected readers: Reader[] = [
         new HttpReader,
         new FileReader,
@@ -49,6 +50,8 @@ export class RefResolver extends EventEmitter{
 
     protected supportWatchChanges
 
+    protected uid = (Math.random()).toString()
+
     public constructor(
         {additionalReaders, additionalParsers, supportWatchChanges}:
         {additionalReaders?: Reader[], additionalParsers?: Parser[], supportWatchChanges?: boolean}
@@ -69,7 +72,19 @@ export class RefResolver extends EventEmitter{
         this.references = []
     }
 
+    public getReferences() {
+        return this.references
+    }
+
     public async resolve(uri: string, opts: RefResolvingOpts = {}, parentReference?: Reference): Promise<any> {
+
+        this.emit('debug-info', {
+            type: 'resolve',
+            uid: this.uid,
+            uri,
+            opts,
+            parentReference
+        })
 
         const [uriWithoutFragment, ...fragments] = uri.split('#')
         const fragment = fragments.join('#')
@@ -89,6 +104,14 @@ export class RefResolver extends EventEmitter{
 
         if (!parentReference && !absoluteUriWithoutFragment) {
             throw new Error('Unable to transform no ressource')
+        }
+
+        if (!this.supportWatchChanges) {
+            opts.watch = false
+        } else {
+            if (opts.watch === undefined && parentReference) {
+                opts.watch = parentReference.opts.watch
+            }
         }
 
         let reference: Reference
@@ -113,6 +136,7 @@ export class RefResolver extends EventEmitter{
                 const abortController = new AbortController
 
                 reference = {
+                    uid: (Math.random()).toString(),
                     uriWithoutFragment: absoluteUriWithoutFragment,
                     abortController,
                     opts,
@@ -122,14 +146,19 @@ export class RefResolver extends EventEmitter{
                 }
 
                 reference.data = (async() => {
-                    if (!this.supportWatchChanges) {
-                        opts.watch = false
-                    }
                     const rawData = await reader.read(absoluteUriWithoutFragment, opts, abortController.signal)
                     rawData.on('stale', () => {
                         this.emit('stale')
                     })
                     rawData.on('error', () => this.emit('error'))
+                    rawData.on('debug-info', (info) => {
+                        this.emit('debug-info', {
+                            refResolverUid: this.uid,
+                            ...info,
+                            subject: 'ReadData',
+                            reference
+                        })
+                    })
 
                     const contentType = opts.contentType || rawData.getContentType()
                     let parsedData
