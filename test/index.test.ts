@@ -21,8 +21,8 @@ interface MyAppConfig {
     message?: string
     rawDummyTodo?: string
     availableRepositories?: string[]
-    flatEnvs: Record<string, string>
-    admins: Array<{firstName: string}>
+    flatEnvs?: Record<string, string>
+    admins?: Array<{firstName: string}>
 }
 
 const configOpts = {
@@ -128,9 +128,9 @@ describe('config', () => {
     it.only('load config from dir', async() => {
         process.env.MYAPP_RUN='false'
 
-        process.env.MYAPP_CONFIG='@ref file:///'+process.cwd()+'/test/dir'
+        process.env.MYAPP_CONFIG='@ref file:///'+process.cwd()+'/test/dir {merge: true, deepMerge:true}'
 
-        process.env.MYAPP_USERS_0_NAME='envName'
+        process.env.MYAPP_USERS_2_NAME='envName'
 
         await loadTestConfig()
     })

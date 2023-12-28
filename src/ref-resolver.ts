@@ -1,7 +1,7 @@
 import { Reader, HttpReader, FileReader, ProcessArgvReader, ProcessEnvReader } from "./readers.js"
 import { cloneDeep, get, isEqual } from 'lodash-es'
 import traverse from "traverse"
-import { ArgvParser, BinaryParser, EnvParser, IniParser, JsonParser, /*MulticontentParser,*/ Parser, TextParser, TomlParser, XmlParser, YamlParser } from "./parsers.js"
+import { ArgvParser, BinaryParser, EnvParser, IniParser, Json5Parser, JsonParser, /*MulticontentParser,*/ Parser, TextParser, TomlParser, XmlParser, YamlParser } from "./parsers.js"
 import { Token } from "./tokens.js"
 import EventEmitter from "events"
 import { SchemaObject } from "ajv"
@@ -35,6 +35,7 @@ export class RefResolver extends EventEmitter{
         new ArgvParser,
         new EnvParser,
         new JsonParser,
+        new Json5Parser,
         new IniParser,
         new TomlParser,
         new YamlParser,

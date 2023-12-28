@@ -5,6 +5,7 @@ import {SchemaObject, default as Ajv} from 'ajv'
 import { RefResolver } from './ref-resolver.js'
 const  { compare } = fjp
 import {flatten} from 'uni-flatten'
+import traverse from 'traverse'
 //import addFormats from "ajv-formats"
 //import ajvKeywords from 'ajv-keywords'
 
@@ -182,9 +183,19 @@ export class ConfigLoader<Config extends Object> extends EventEmitter implements
 
         if ((conf as any).config) {
             conf = (conf as any).config
-            conf = this.mergeWithPaths(conf, env)
-            conf = this.mergeWithPaths(conf, arg)
+            if (conf instanceof Object) {
+                conf = this.mergeWithPaths(conf, env)
+                conf = this.mergeWithPaths(conf, arg)
+            }
         }
+
+        // Small hack
+        traverse(conf).forEach(function (val) {
+            if (Array.isArray(val)) {
+                val = val.filter(v => v !== undefined)
+                this.update(val)
+            }
+        })
 
         return conf
     }
@@ -246,21 +257,24 @@ export class ConfigLoader<Config extends Object> extends EventEmitter implements
             useDefaults: true,
             strict: true,
             parseDate: true,
-            allowDate: true
+            allowDate: true,
+            allErrors: true
         })
 
         //addFormats.default(ajv)
         // ajvKeywords.default(ajv)
 
         if (!ajv.validate(schema, candidateConfig)) {
-            const firstError = ajv.errors![0]
-            const message = 'Configuration '
-                + (firstError.instancePath ? firstError.instancePath.substring(1).replace('/', '.') + ' ' : '')
-                + firstError.message
+            const invalidations: string[] = ajv.errors.map((error: any) => {
+                return (error.instancePath ? error.instancePath.substring(1).replace('/', '.') + ' ' : '')
+                + error.message
+            })
+
+            const message = 'Configuration ' + invalidations.join(', ')
 
             throw new ConfigError(message, {
                 config: candidateConfig,
-                cause: ajv.errors![0]
+                cause: ajv.errors
             })
         }
 

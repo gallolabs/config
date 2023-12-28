@@ -13,6 +13,8 @@ import othersMime from 'mime/types/other.js'
 import { glob } from "glob"
 import { Token } from "./tokens.js"
 import { RefResolver } from "./ref-resolver.js"
+import { merge } from "lodash-es"
+import deepmerge from "deepmerge"
 
 const mime = new Mime(standardMime, othersMime)
 
@@ -110,6 +112,14 @@ class DirToken extends Token {
     public async resolve(refResolver: RefResolver) {
         const value = await Promise.all(this.files.map(file => refResolver.resolve('file://' + file, {watch: this.opts.watch})))
 
+        if (this.opts.merge) {
+            if (this.opts.deepMerge) {
+                return deepmerge.all([{}, ...value])
+                //return value.reduce((merged, toMerge) => deepmerge(merged, toMerge), {})
+            }
+            return merge.apply(merge, [{}, ...value])
+        }
+
         return value
     }
 }
@@ -142,7 +152,7 @@ export class FileReader implements Reader {
     }
 
     protected async readDir(path: string, opts: ReaderOpts & { filePattern?: string }, _abortSignal: AbortSignal) {
-        const files = await glob(opts.filePattern || '**/*', {nodir: true, absolute: true, cwd: path })
+        const files = await glob(opts.filePattern || '**/*', {nodir: true, absolute: true, cwd: path,  })
         //const contents = await Promise.all(files.map(file => readFile(file)))
 
         // const rc = new ReadContent('application/x.multicontent', files.map((file, i) => {
@@ -154,7 +164,7 @@ export class FileReader implements Reader {
 
         // const rc = new ReadContent('application/x.', files.map(file => new RefToken('file://' + file, {watch: opts.watch})))
 
-        const rc = new ReadContent(null, new DirToken(files, opts))
+        const rc = new ReadContent(null, new DirToken(files.sort(), opts))
 
         return rc
     }

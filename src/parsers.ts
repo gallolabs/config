@@ -9,6 +9,7 @@ import traverse from "traverse"
 import stringArgv from 'string-argv'
 import { SchemaObject } from "ajv"
 import { flatDictToDeepObject } from "./unflat-mapper.js"
+import JSON5 from 'json5'
 
 export interface ParserOpts {
     [k: string]: any
@@ -126,6 +127,34 @@ export class JsonParser implements Parser {
         }
 
         const obj = JSON.parse(content.toString())
+
+        traverse(obj).forEach(function (val) {
+            if (val instanceof Object) {
+                if (val.$query) {
+                    return new QueryToken(val.$query)
+                }
+                if (val.$ref) {
+                    return new RefToken(val.$ref, val.$opts || {})
+                }
+            }
+
+            return val
+        })
+
+        return obj
+    }
+}
+
+export class Json5Parser implements Parser {
+    public canParse(contentType: string): boolean {
+        return contentType.split(';')[0] === 'application/json5'
+    }
+    public async parse(content: unknown): Promise<Object> {
+        if (!(content instanceof Buffer || typeof content === 'string')) {
+            throw new Error('Unsupport content variable type : ' + typeof content)
+        }
+
+        const obj = JSON5.parse(content.toString())
 
         traverse(obj).forEach(function (val) {
             if (val instanceof Object) {

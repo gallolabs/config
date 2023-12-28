@@ -1,5 +1,6 @@
 import jsonata from "jsonata"
 import { RefResolver, RefResolvingOpts, Reference } from "./ref-resolver.js"
+import JSON5 from 'json5'
 
 export abstract class Token {
     abstract resolve(refResolver: RefResolver, reference: Reference): Promise<any>
@@ -79,7 +80,7 @@ export function createRefTokenFromString(string: string) {
 
     const [uri, ...optsParts] = string.split(' ')
 
-    const opts = optsParts.length ? JSON.parse(optsParts.join(' ')) : {} // jsonata(optsParts.join(' ')).evaluate(null)
+    const opts = optsParts.length ? JSON5.parse(optsParts.join(' ')) : {} // jsonata(optsParts.join(' ')).evaluate(null)
     return new RefToken(uri, opts)
 
 }
