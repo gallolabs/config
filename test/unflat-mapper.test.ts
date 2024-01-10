@@ -14,7 +14,8 @@ describe.only('unflat', () => {
                 APP_USERS_1_CREATEDAT: '2017',
                 APP_REPOSITORIES_AAA_BACKUP_TAGS_0: 'tag0',
                 APP_REPOSITORIES_AAA_BACKUP_TAGS_1: 'tag1',
-                APP_REPOSITORIES_AAB_BACKUP_TAGS_0: 'tag0'
+                APP_REPOSITORIES_AAB_BACKUP_TAGS_0: 'tag0',
+                APP_STREET_NAME: 'Paris'
             },
             delimiter: '_',
             schema: {
@@ -46,6 +47,7 @@ describe.only('unflat', () => {
                             }
                         }
                     },
+                    street_name: {type: 'string'},
                     users: {
                         type: 'array',
                         items: {
@@ -224,6 +226,202 @@ describe.only('unflat', () => {
                 }
               }
             }
+
+
+        })
+
+        console.log(JSON.stringify(data, undefined, 4))
+
+
+    })
+
+    it('flatDictToDeepObject', () => {
+
+        // https://apidog.com/blog/oneof-anyof-allof/
+
+        const data = flatDictToDeepObject({
+            prefix: 'APP',
+            data: {
+                APP_BIRD_NAME: 'Trump',
+                APP_AGE: '118',
+                APP_HAS_DEGREE: 'true'
+            },
+            delimiter: '_',
+            schema: {
+              "allOf": [
+                {
+                  "properties": {
+                    "birdName": { "type": "string" },
+                    "age": { "type": "integer", "minimum": 18 }
+                  },
+                  "required": ["birdName", "age"]
+                },
+                {
+                  "properties": {
+                    "hasDegree": { "type": "boolean", "default": true }
+                  },
+                  "required": ["hasDegree"]
+                }
+              ]
+            }
+
+
+        })
+
+        console.log(JSON.stringify(data, undefined, 4))
+
+
+    })
+
+    it('flatDictToDeepObject', () => {
+
+        // https://apidog.com/blog/oneof-anyof-allof/
+
+        const data = flatDictToDeepObject({
+            prefix: 'APP',
+            data: {
+                APP_BIRD_NAME: 'Trump',
+                APP_LOREM: 'Yes',
+                APP_IP_SUM: '118.218'
+            },
+            delimiter: '_',
+            schema: {
+              type: 'object',
+              anyOf: [
+                {
+                  properties: {
+                    birdName: {
+                      type: 'string',
+                    },
+                  },
+                  required: ['birdName'],
+                },
+                {
+                  properties: {
+                    lorem: {
+                      type: 'string',
+                    },
+                    ipSum: {
+                      type: 'string',
+                    },
+                  },
+                },
+              ],
+            }
+
+
+        })
+
+        console.log(JSON.stringify(data, undefined, 4))
+
+
+    })
+
+    it('flatDictToDeepObject', () => {
+
+        // https://json-schema.org/understanding-json-schema/reference/conditionals
+
+        const data = flatDictToDeepObject({
+            prefix: 'APP',
+            data: {
+                APP_STREET_ADDRESS: '1600 Pennsylvania Avenue NW',
+                APP_COUNTRY: 'United States of America',
+                APP_POSTAL_CODE: '20500'
+            },
+            delimiter: '_',
+            schema: {
+              "type": "object",
+              "properties": {
+                "streetAddress": {
+                  "type": "string"
+                },
+                "country": {
+                  "default": "United States of America",
+                  "enum": ["United States of America", "Canada", "Netherlands"]
+                }
+              },
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "country": { "const": "United States of America" }
+                    }
+                  },
+                  "then": {
+                    "properties": {
+                      "postalCode": { "pattern": "[0-9]{5}(-[0-9]{4})?" }
+                    }
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "country": { "const": "Canada" }
+                    },
+                    "required": ["country"]
+                  },
+                  "then": {
+                    "properties": {
+                      "postalCode": { "pattern": "[A-Z][0-9][A-Z] [0-9][A-Z][0-9]" }
+                    }
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "country": { "const": "Netherlands" }
+                    },
+                    "required": ["country"]
+                  },
+                  "then": {
+                    "properties": {
+                      "postalCode": { "pattern": "[0-9]{4} [A-Z]{2}" }
+                    }
+                  }
+                }
+              ]
+            }
+
+
+
+        })
+
+        console.log(JSON.stringify(data, undefined, 4))
+
+
+    })
+
+    it('flatDictToDeepObject', () => {
+
+        // https://json-schema.org/understanding-json-schema/reference/conditionals
+
+        const data = flatDictToDeepObject({
+            prefix: 'APP',
+            data: {
+                APP_RESTAURANT_TYPE: 'sit-down',
+                APP_TOTAL: '17',
+                APP_TIP: '4'
+            },
+            delimiter: '_',
+            schema: {
+              "type": "object",
+              "properties": {
+                "restaurantType": { "enum": ["fast-food", "sit-down"] },
+                "total": { "type": "number" },
+                "tip": { "type": "number" }
+              },
+              "anyOf": [
+                {
+                  "not": {
+                    "properties": { "restaurantType": { "const": "sit-down" } },
+                    "required": ["restaurantType"]
+                  }
+                },
+                { "required": ["tip"] }
+              ]
+            }
+
+
 
 
         })
