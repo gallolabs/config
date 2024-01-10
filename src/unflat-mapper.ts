@@ -30,14 +30,65 @@ export function flatDictToDeepObject(
     }
 
     each(data, (value, key) => {
-        const path = resolveFlatPath(schemaSubPath ? schemaSubPath + delimiter + key : key, delimiter, schema)
-        set(obj, path, value)
+        const path = resolveFlatPath2((schemaSubPath ? schemaSubPath + delimiter + key : key).split(delimiter).map(v => v.toLowerCase()), schema)
+
+        //const path = resolveFlatPath(schemaSubPath ? schemaSubPath + delimiter + key : key, delimiter, schema)
+        set(obj, path.replace(failTokenButShouldBeRefactorized, ''), value)
     })
 
     return obj
 }
 
-function resolveFlatPath(path: string, delimiter: string, schema: any): string {
+function findCombinaison(key: string, path: string[]) {
+    for (let cursor = 0; cursor < path.length; cursor++) {
+        const candidate = path.slice(0, cursor + 1).join('')
+        if (candidate.toLowerCase() === key.toLowerCase()) {
+            return cursor + 1
+        }
+        if (candidate.length >= key.length) {
+            break
+        }
+    }
+}
+
+const failTokenButShouldBeRefactorized = Math.random().toString()
+
+function resolveFlatPath2(path: string[], schema: any): string {
+    if (schema.oneOf) {
+        const candidates = schema.oneOf.map((a: any) => resolveFlatPath2(path, {...schema, ...a, oneOf: undefined}))
+
+        return candidates.find((c: any) => !c.includes(failTokenButShouldBeRefactorized)) || candidates[0]
+    }
+    if (schema.type === 'object') {
+        const properties = schema.properties
+
+        for (const propKey in properties) {
+            const cursor = findCombinaison(propKey, path)
+            if (cursor) {
+                const resolvedNext = resolveFlatPath2(path.slice(cursor), properties[propKey])
+                return propKey + (resolvedNext ? '.' + resolvedNext : '')
+            }
+        }
+
+        if (typeof schema.additionalProperties === 'object') {
+            const key = path[0]
+            const resolvedNext = resolveFlatPath2(path.slice(1), schema.additionalProperties)
+            return key + (resolvedNext ? '.' + resolvedNext : '')
+        }
+
+        return path.join('.') + failTokenButShouldBeRefactorized
+    }
+
+    if (schema.type === 'array') {
+        const index = path[0]
+        const resolvedNext = resolveFlatPath2(path.slice(1), schema.items)
+        return index + (resolvedNext ? '.' + resolvedNext : '')
+    }
+
+    return path.join('.')
+}
+
+export function resolveFlatPath(path: string, delimiter: string, schema: any): string {
 
     if (schema.type === 'object') {
         const properties = schema.properties

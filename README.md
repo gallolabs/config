@@ -7,6 +7,15 @@
 
 But should be good
 
+Todo
+- Detect impossible resolutions (cyclic refs, etc) and throw errors (already managed one case but not all)
+- Add Yaml !env THE_ENV to use unflatten env var (but resolved ?)
+- Add support of variable substition in various parsers like for envs API_URL="${BASE_URL}/api" targetting same content before unflat and resolve (subtition in parser on raw content)
+- Add merge function in QueryToken with support of deepMerge with options (array, objects, etc), and with not byPathMerge, and shallowMerge ; with not ability to extend ref/merge in others contexts (in yaml ?). To test use cases.
+- allowError option (only reader ?) for example to merge a local translation files with remote one and accepting remote fail without blocking everything. To see events to catch that
+- Config loader load() or reload() callable method to force reloading
+- emit activite.change, and various event (see debug-info), here to track the change event without adding a listener on it. Can be view like a watching activities inside the system
+
 ## Definition
 
 Global Workflow :
