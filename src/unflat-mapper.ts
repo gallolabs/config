@@ -1,6 +1,7 @@
 import { SchemaObject } from "ajv"
-import { chain, each, get, omit, set } from "lodash-es"
+import { chain, each, omit } from "lodash-es"
 import traverse from "traverse"
+import jsonPointer from 'json-pointer'
 
 export function flatDictToDeepObject(
     {data, delimiter, schema, prefix, schemaSubPath}:
@@ -30,10 +31,11 @@ export function flatDictToDeepObject(
     }
 
     each(data, (value, key) => {
-        const path = resolveFlatPath2((schemaSubPath ? schemaSubPath + delimiter + key : key).split(delimiter).map(v => v.toLowerCase()), schema)
-
+        const path = '/' + resolveFlatPath2((schemaSubPath ? schemaSubPath + delimiter + key : key).split(delimiter).map(v => v.toLowerCase()), schema)
         //const path = resolveFlatPath(schemaSubPath ? schemaSubPath + delimiter + key : key, delimiter, schema)
-        set(obj, path.replace(failTokenButShouldBeRefactorized, ''), value)
+
+
+        jsonPointer.set(obj, path.replace(failTokenButShouldBeRefactorized, ''), value)
     })
 
     return obj
@@ -54,6 +56,8 @@ function findCombinaison(key: string, path: string[]) {
 
 const failTokenButShouldBeRefactorized = Math.random().toString()
 
+// should returns either /xxx instead to add / at the end if not empty
+// Or should returns array, pushing elements avoiding to waste time with escape
 function resolveFlatPath2(path: string[], schema: any): string {
     if (schema.oneOf) {
         const candidates = schema.oneOf.map((a: any) => resolveFlatPath2(path, {...schema, ...a, oneOf: undefined}))
@@ -92,26 +96,26 @@ function resolveFlatPath2(path: string[], schema: any): string {
             const cursor = findCombinaison(propKey, path)
             if (cursor) {
                 const resolvedNext = resolveFlatPath2(path.slice(cursor), properties[propKey])
-                return propKey + (resolvedNext ? '.' + resolvedNext : '')
+                return propKey + (resolvedNext ? '/' + resolvedNext : '')
             }
         }
 
         if (typeof schema.additionalProperties === 'object') {
             const key = path[0]
             const resolvedNext = resolveFlatPath2(path.slice(1), schema.additionalProperties)
-            return key + (resolvedNext ? '.' + resolvedNext : '')
+            return key + (resolvedNext ? '/' + resolvedNext : '')
         }
 
-        return path.join('.') + failTokenButShouldBeRefactorized
+        return path.map(p => jsonPointer.escape(p)).join('.') + failTokenButShouldBeRefactorized
     }
 
     if (schema.type === 'array') {
         const index = path[0]
         const resolvedNext = resolveFlatPath2(path.slice(1), schema.items)
-        return index + (resolvedNext ? '.' + resolvedNext : '')
+        return index + (resolvedNext ? '/' + resolvedNext : '')
     }
 
-    return path.join('.')
+    return path.map(p => jsonPointer.escape(p)).join('/')
 }
 
 function unrefSchema(schema: Object) {
@@ -123,10 +127,10 @@ function unrefSchema(schema: Object) {
         if ($ref.substring(0, 1) !== '#') {
             throw new Error('Unexpected external resource')
         }
-        const path = $ref.substring(2).replace(/\//g, '.')
+        const path = $ref.substring(1)
         return {
             ...omit(o, '$ref'),
-            ...resolveRef(get(schema, path))
+            ...resolveRef(jsonPointer.get(schema, path))
         }
     }
 
