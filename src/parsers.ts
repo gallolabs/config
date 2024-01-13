@@ -192,7 +192,14 @@ const customTags: YAML.Tags = [
       collection: 'map',
       resolve(obj: any) {
         obj = obj.toJSON()
-        return new RefToken(obj.uri, obj.opts)
+        try {
+            return new RefToken(obj.uri, obj.opts)
+        } catch (e) {
+            throw new Error((e as Error).message, {cause: {
+                refArgs: obj,
+                error: e
+            }})
+        }
       }
     },
 ]

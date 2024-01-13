@@ -216,7 +216,7 @@ export class ConfigLoader<Config extends Object> extends EventEmitter implements
     }
 
     protected emitChanges(previousConfig: Config, config: Config) {
-        const patch = compare(previousConfig, config, false).map(op => {
+        const patch = compare(previousConfig, config, false)/*.map(op => {
             return {
                 ...op,
                 path: op.path
@@ -224,7 +224,7 @@ export class ConfigLoader<Config extends Object> extends EventEmitter implements
                     .replace(/\//g, '.')
                     //.replace(/\.([0-9]+)(\.|$)/g, '[$1]$2')
             }
-        })
+        })*/
 
         if (patch.length === 0) {
             return
@@ -236,26 +236,46 @@ export class ConfigLoader<Config extends Object> extends EventEmitter implements
             previousConfig
         }
 
-        const hasGlobalChangeListener = this.emit('change', changeArg)
+        this.emit('change', changeArg)
+        const emittedPaths: string[] = []
         patch.forEach(op => {
             let pathHasListener = false
-            op.path.split('.').reduce((rootToLeafNodes: string[], node) => {
-                rootToLeafNodes = rootToLeafNodes.concat(node)
-                const nodeHasListener = this.emit('change:' + rootToLeafNodes.join('.') as 'change:xxx', {
+
+            if (!emittedPaths.includes('/')) {
+                emittedPaths.push('/')
+                if (this.emit('change:/', {
                     config,
                     previousConfig,
-                    value: get(config, rootToLeafNodes),
-                    previousValue: get(previousConfig, rootToLeafNodes),
-                })
-
-                if (nodeHasListener) {
+                    value: config,
+                    previousValue: previousConfig,
+                })) {
                     pathHasListener = true
                 }
+            }
+
+            op.path.substring(1).split('/').reduce((rootToLeafNodes: string[], node) => {
+                rootToLeafNodes = rootToLeafNodes.concat(node)
+
+                const pathToEmit = '/' + rootToLeafNodes.join('/')
+
+                if (!emittedPaths.includes(pathToEmit)) {
+                    emittedPaths.push(pathToEmit)
+
+                    if (this.emit('change:' + pathToEmit, {
+                        config,
+                        previousConfig,
+                        value: get(config, rootToLeafNodes),
+                        previousValue: get(previousConfig, rootToLeafNodes),
+                    })) {
+                        pathHasListener = true
+                    }
+                }
+
 
                 return rootToLeafNodes
             }, [])
 
-            if (!pathHasListener && !hasGlobalChangeListener) {
+            if (!pathHasListener) {
                 this.emit('error', new Error('Unhandled config watch change for ' + op.path), 'watchChanges')
             }
 
@@ -281,7 +301,7 @@ export class ConfigLoader<Config extends Object> extends EventEmitter implements
 
         if (!ajv.validate(schema, candidateConfig)) {
             const invalidations: string[] = ajv.errors.map((error: any) => {
-                return (error.instancePath ? error.instancePath.substring(1).replace('/', '.') + ' ' : '')
+                return (error.instancePath ? error.instancePath/*.substring(1).replace('/', '.')*/ + ' ' : '')
                 + error.message
             })
 

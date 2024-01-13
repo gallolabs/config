@@ -17,6 +17,7 @@ interface MyAppConfig {
     api?: {
         url: string
         password?: string
+        secretKey?: string
     }
     logo?: string
     message?: string
@@ -46,18 +47,24 @@ async function loadTestConfig(opts: any = {}) {
         console.log('change', inspect(change, {colors: true, depth: null}))
     })
 
-    const config = await configLoading
+    try {
+        const config = await configLoading
 
-    console.log(
-        'config',
-        inspect(config, {colors: true, depth: null})
-    )
+        console.log(
+            'config',
+            inspect(config, {colors: true, depth: null})
+        )
 
-    configLoading.on('error', (error) => {
-        console.log('error', inspect(error, {colors: true, depth: null}))
-    })
+        configLoading.on('error', (error) => {
+            console.log('error', inspect(error, {colors: true, depth: null}))
+        })
 
-    return config
+        return config
+
+    } catch (e) {
+        console.error('Config promise error', e)
+        throw e
+    }
 }
 
 describe('config', () => {
@@ -152,7 +159,7 @@ describe('config', () => {
     }).timeout(10500)
 
 
-    it.only('self reference fix', async() => {
+    it('self reference fix', async() => {
         //process.env.MYAPP_RUN='false'
 
         process.env.MYAPP_CONFIG='@ref file://'+process.cwd()+'/test/config-selfref.test.yml'

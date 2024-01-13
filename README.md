@@ -15,6 +15,8 @@ Todo
 - allowError option (only reader ?) for example to merge a local translation files with remote one and accepting remote fail without blocking everything. To see events to catch that
 - Config loader load() or reload() callable method to force reloading
 - emit activite.change, and various event (see debug-info), here to track the change event without adding a listener on it. Can be view like a watching activities inside the system
+- Fix stop that continues ... Use Global AbortController and/or identify the process (previousRefResolver to clear etc)
+- Change everywhere custom js path (a.b.c) by standard JSON pointer (/a/b/c)
 
 ## Definition
 
@@ -30,10 +32,11 @@ Global Workflow :
 - Event 'loaded' is emitted
 - If previous config was loaded, the new config is compared and :
     + Event 'change' is emitted with patches, old config and new config
-    + Events 'change:xxx.xxx.xxx' are emitted with all the tree. For example if admin.identity.name is modified, are emitted :
-        * change:admin
-        * change:admin.identity
-        * change:admin.identity.name
+    + Events 'change:/xxx/yyy/zzz' are emitted with all the tree. For example if admin.identity.name is modified, are emitted :
+        * change:/
+        * change:/admin
+        * change:/admin/identity
+        * change:/admin/identity/name
 
 Notes: To use watch, both configLoader must be configured to support it, and provided config must activate it (ex CONFIG_OPTS_WATCH=true) 
 

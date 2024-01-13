@@ -1,6 +1,6 @@
 import { flatDictToDeepObject } from "../src/unflat-mapper.js"
 
-describe.only('unflat', () => {
+describe('unflat', () => {
     it('flatDictToDeepObject', () => {
 
         const data = flatDictToDeepObject({

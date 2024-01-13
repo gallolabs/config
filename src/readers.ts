@@ -74,7 +74,7 @@ export class HttpReader implements Reader {
 
         const rc = new ReadContent(contentType, content)
 
-        if (opts.watch) {
+        if (opts.watch && !abortSignal.aborted) {
             let lastContent = content
 
             const nodeTimeout = setInterval(async () => {
@@ -169,7 +169,7 @@ export class FileReader implements Reader {
         const rc = new ReadContent(null, new DirToken(files.sort(), opts))
 
         // It is too late here because file can have been modified before watch start
-        if (opts.watch) {
+        if (opts.watch && !abortSignal.aborted) {
             const watcher = chokidar
                 .watch(path, {ignored: path + '/*.*'})
                 .on('all', async(type, _path) => {
@@ -198,7 +198,7 @@ export class FileReader implements Reader {
         const rc = new ReadContent(contentType, content)
 
         // It is too late here because file can have been modified before watch start
-        if (opts.watch) {
+        if (opts.watch && !abortSignal.aborted) {
             const watcher = chokidar
                 .watch(path)
                 .on('all', async(type) => {

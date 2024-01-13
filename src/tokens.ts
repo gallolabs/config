@@ -12,6 +12,9 @@ export class RefToken extends Token {
 
     public constructor(uri: string, opts?: object) {
         super()
+        if (uri === undefined) {
+            throw new Error('Missing uri')
+        }
         this.uri = uri
         this.opts = opts || {}
     }
