@@ -22,22 +22,6 @@ export interface Parser {
     parse: (content: unknown, opts: ParserOpts, contentType: string) => Promise<any>
 }
 
-// export class MulticontentParser implements Parser {
-//     public canParse(contentType: string): boolean {
-//         return contentType === 'application/x.multicontent'
-//     }
-//     public async parse(content: unknown, _: ParserOpts): Promise<Object> {
-//         if (!(content instanceof Object)) {
-//             throw new Error('Unsupport content variable type : ' + typeof content)
-//         }
-
-//         const items: Array<{content: Buffer, contentType: string}> = content as any
-
-
-
-//     }
-// }
-
 export class BinaryParser implements Parser {
     public canParse(contentType: string): boolean {
         return !contentType.startsWith('text/')

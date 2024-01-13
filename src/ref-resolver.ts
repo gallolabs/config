@@ -1,10 +1,11 @@
 import { Reader, HttpReader, FileReader, ProcessArgvReader, ProcessEnvReader } from "./readers.js"
-import { cloneDeep, get, isEqual } from 'lodash-es'
+import { cloneDeep, isEqual } from 'lodash-es'
 import traverse from "traverse"
 import { ArgvParser, BinaryParser, EnvParser, IniParser, Json5Parser, JsonParser, /*MulticontentParser,*/ Parser, TextParser, TomlParser, XmlParser, YamlParser } from "./parsers.js"
 import { Token } from "./tokens.js"
 import EventEmitter from "events"
 import { SchemaObject } from "ajv"
+import jsonPointer from 'json-pointer'
 
 export interface RefResolvingOpts {
     // including readers & parsers options
@@ -77,7 +78,6 @@ export class RefResolver extends EventEmitter {
     }
 
     public async resolve(uri: string, opts: RefResolvingOpts = {}, parentReference?: Reference): Promise<any> {
-
         const [uriWithoutFragment, ...fragments] = uri.split('#')
         const fragment = fragments.join('#')
 
@@ -241,7 +241,7 @@ export class RefResolver extends EventEmitter {
                 reference
             })
 
-            data = get(data, fragment)
+            data = jsonPointer.get(data, fragment)
 
             if (data === undefined) {
                throw new Error('subRessource not found : ' + fragment + ' on self ('+reference.uriWithoutFragment+')')
@@ -259,7 +259,7 @@ export class RefResolver extends EventEmitter {
 
         data = await this.resolveTokens(data, reference)
 
-        data = get(data, fragment)
+        data = jsonPointer.get(data, fragment)
 
         if (data === undefined) {
            throw new Error('subRessource not found : ' + fragment + ' on ' + absoluteUriWithoutFragment)

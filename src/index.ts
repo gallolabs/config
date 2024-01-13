@@ -6,6 +6,7 @@ import { RefResolver } from './ref-resolver.js'
 const  { compare } = fjp
 import {flatten} from 'uni-flatten'
 import traverse from 'traverse'
+import jsonPointer from 'json-pointer'
 //import addFormats from "ajv-formats"
 //import ajvKeywords from 'ajv-keywords'
 
@@ -216,15 +217,7 @@ export class ConfigLoader<Config extends Object> extends EventEmitter implements
     }
 
     protected emitChanges(previousConfig: Config, config: Config) {
-        const patch = compare(previousConfig, config, false)/*.map(op => {
-            return {
-                ...op,
-                path: op.path
-                    .replace(/^\//, '')
-                    .replace(/\//g, '.')
-                    //.replace(/\.([0-9]+)(\.|$)/g, '[$1]$2')
-            }
-        })*/
+        const patch = compare(previousConfig, config, false)
 
         if (patch.length === 0) {
             return
@@ -253,10 +246,10 @@ export class ConfigLoader<Config extends Object> extends EventEmitter implements
                 }
             }
 
-            op.path.substring(1).split('/').reduce((rootToLeafNodes: string[], node) => {
+            jsonPointer.parse(op.path).reduce((rootToLeafNodes: string[], node) => {
                 rootToLeafNodes = rootToLeafNodes.concat(node)
 
-                const pathToEmit = '/' + rootToLeafNodes.join('/')
+                const pathToEmit = jsonPointer.compile(rootToLeafNodes)
 
                 if (!emittedPaths.includes(pathToEmit)) {
                     emittedPaths.push(pathToEmit)

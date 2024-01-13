@@ -3,10 +3,10 @@ users:
 
 message: All well
 
-rawDummyTodo: !ref ./config2.json5#oneValue
+rawDummyTodo: !ref ./config2.json5#/oneValue
 
 apiId: !ref
-  uri: https://random-data-api.com/api/beer/random_beer#id
+  uri: https://random-data-api.com/api/beer/random_beer#/id
   opts:
     watchInterval: 1000
     allowfail: true
@@ -14,6 +14,6 @@ apiId: !ref
 api:
   url: 'http://api'
   secretKey: !ref
-    uri: https://random-data-api.com/api/beer/random_beer#id
+    uri: https://random-data-api.com/api/beer/random_beer#/id
     opts:
       watchInterval: 1000

@@ -274,25 +274,3 @@ export class ProcessEnvReader implements Reader {
         return new ReadContent('text/plain', env[path])
     }
 }
-
-
-
-
-// export class DirLoader implements SourceLoader {
-//     protected dirpath: string
-
-//     public constructor(dirpath: string) {
-//         this.dirpath = dirpath
-//     }
-
-//     public async load(schema: SchemaObject): Promise<Object> {
-//         const files = await readdir(this.dirpath)
-
-//         const loaders = files.map(file => new FileLoader(file))
-
-//         const objs = await Promise.all(loaders.map(loader => loader.load(schema)))
-
-//         return objs.reduce((obj, _obj) => ({...obj, ..._obj}), {})
-//     }
-// }
-
