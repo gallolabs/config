@@ -16,7 +16,6 @@ Todo
 - Config loader load() or reload() callable method to force reloading
 - emit activite.change, and various event (see debug-info), here to track the change event without adding a listener on it. Can be view like a watching activities inside the system
 - Fix stop that continues ... Use Global AbortController and/or identify the process (previousRefResolver to clear etc)
-- Change everywhere custom js path (a.b.c) by standard JSON pointer (/a/b/c)
 
 ## Definition
 

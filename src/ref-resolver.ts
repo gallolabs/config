@@ -79,7 +79,7 @@ export class RefResolver extends EventEmitter {
 
     public async resolve(uri: string, opts: RefResolvingOpts = {}, parentReference?: Reference): Promise<any> {
         const [uriWithoutFragment, ...fragments] = uri.split('#')
-        const fragment = fragments.join('#')
+        const fragment = decodeURIComponent(fragments.join('#'))
 
         const uriWithoutFragmentHasScheme = uriWithoutFragment.includes(':')
 

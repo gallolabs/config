@@ -127,7 +127,9 @@ function unrefSchema(schema: Object) {
         if ($ref.substring(0, 1) !== '#') {
             throw new Error('Unexpected external resource')
         }
-        const path = $ref.substring(1)
+
+        const path = decodeURIComponent($ref.substring(1))
+
         return {
             ...omit(o, '$ref'),
             ...resolveRef(jsonPointer.get(schema, path))

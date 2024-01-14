@@ -1,10 +1,10 @@
-import { cloneDeep, each, get, set } from 'lodash-es'
+import { cloneDeep, each } from 'lodash-es'
 import fjp, {Operation} from 'fast-json-patch'
 import { EventEmitter, once } from 'events'
 import {SchemaObject, default as Ajv} from 'ajv'
 import { RefResolver } from './ref-resolver.js'
 const  { compare } = fjp
-import {flatten} from 'uni-flatten'
+//import {flatten} from 'uni-flatten'
 import traverse from 'traverse'
 import jsonPointer from 'json-pointer'
 //import addFormats from "ajv-formats"
@@ -181,11 +181,11 @@ export class ConfigLoader<Config extends Object> extends EventEmitter implements
         obj1 = cloneDeep(obj1)
         obj2 = cloneDeep(obj2)
 
-        each(flatten(obj2 as any), (v, path) => {
+        each(jsonPointer.dict(obj2 as any)/* flatten(obj2 as any)*/, (v, path) => {
             if (v === undefined) {
                 return
             }
-            set(obj1, path, v)
+            jsonPointer.set(obj1, path, v)
         })
 
         return obj1
@@ -231,6 +231,7 @@ export class ConfigLoader<Config extends Object> extends EventEmitter implements
 
         this.emit('change', changeArg)
         const emittedPaths: string[] = []
+
         patch.forEach(op => {
             let pathHasListener = false
 
@@ -257,8 +258,8 @@ export class ConfigLoader<Config extends Object> extends EventEmitter implements
                     if (this.emit('change:' + pathToEmit, {
                         config,
                         previousConfig,
-                        value: get(config, rootToLeafNodes),
-                        previousValue: get(previousConfig, rootToLeafNodes),
+                        value: jsonPointer.get(config, rootToLeafNodes),
+                        previousValue: jsonPointer.get(previousConfig, rootToLeafNodes),
                     })) {
                         pathHasListener = true
                     }
