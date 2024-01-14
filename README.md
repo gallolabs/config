@@ -15,7 +15,7 @@ Todo
 - allowError option (only reader ?) for example to merge a local translation files with remote one and accepting remote fail without blocking everything. To see events to catch that
 - Config loader load() or reload() callable method to force reloading
 - emit activite.change, and various event (see debug-info), here to track the change event without adding a listener on it. Can be view like a watching activities inside the system
-- Fix stop that continues ... Use Global AbortController and/or identify the process (previousRefResolver to clear etc)
+- Accept file:/ and not only file:/// as it seems to be in a RFC ; use env:/ instead of env: to use URI resolve for every readers ?
 
 ## Definition
 

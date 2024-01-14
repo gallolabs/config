@@ -20,7 +20,6 @@ export interface Reference {
     uriWithoutFragment: string
     opts: RefResolvingOpts
     reader: Reader
-    abortController: AbortController
     data: Promise<any>
     parent?: Reference
 }
@@ -53,10 +52,11 @@ export class RefResolver extends EventEmitter {
 
     protected uid = (Math.random()).toString()
 
+    protected abortSignal: AbortSignal
+
     public constructor(
-        {additionalReaders, additionalParsers, supportWatchChanges}:
-        {additionalReaders?: Reader[], additionalParsers?: Parser[], supportWatchChanges?: boolean}
-    = {}) {
+        {additionalReaders, additionalParsers, supportWatchChanges, abortSignal}:
+        {additionalReaders?: Reader[], additionalParsers?: Parser[], supportWatchChanges?: boolean, abortSignal: AbortSignal}) {
         super()
         if (additionalReaders) {
             this.readers = [...this.readers, ...additionalReaders]
@@ -65,12 +65,7 @@ export class RefResolver extends EventEmitter {
             this.parsers = [...this.parsers, ...additionalParsers]
         }
         this.supportWatchChanges = supportWatchChanges ?? true
-    }
-
-    public clear() {
-        // remove cache and stop watchers
-        this.references.forEach(reference => reference.abortController.abort())
-        this.references = []
+        this.abortSignal = abortSignal
     }
 
     public getReferences() {
@@ -78,6 +73,10 @@ export class RefResolver extends EventEmitter {
     }
 
     public async resolve(uri: string, opts: RefResolvingOpts = {}, parentReference?: Reference): Promise<any> {
+        if (this.abortSignal?.aborted) {
+            throw this.abortSignal.reason
+        }
+
         const [uriWithoutFragment, ...fragments] = uri.split('#')
         const fragment = decodeURIComponent(fragments.join('#'))
 
@@ -155,12 +154,9 @@ export class RefResolver extends EventEmitter {
                     throw new Error('Unable to find reader for ' + absoluteUriWithoutFragment)
                 }
 
-                const abortController = new AbortController
-
                 reference = {
                     uid: (Math.random()).toString(),
                     uriWithoutFragment: absoluteUriWithoutFragment,
-                    abortController,
                     opts,
                     reader,
                     data: Promise.resolve(),
@@ -176,7 +172,7 @@ export class RefResolver extends EventEmitter {
                 })
 
                 reference.data = (async() => {
-                    const rawData = await reader.read(absoluteUriWithoutFragment, opts, abortController.signal)
+                    const rawData = await reader.read(absoluteUriWithoutFragment, opts, this.abortSignal)
                     rawData.on('stale', () => {
                         this.emit('stale')
                     })
