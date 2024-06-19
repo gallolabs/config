@@ -16,6 +16,7 @@ Todo
 - Config loader load() or reload() callable method to force reloading
 - emit activite.change, and various event (see debug-info), here to track the change event without adding a listener on it. Can be view like a watching activities inside the system
 - Accept file:/ and not only file:/// as it seems to be in a RFC ; use env:/ instead of env: to use URI resolve for every readers ?
+- A command to convert a config (env, args, files, etc) to another format (ex to envs, json, etc). Don't need to use gallolabs/config to be flexible !
 
 ## Definition
 
